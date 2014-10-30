@@ -131,7 +131,75 @@ def parse_message_source_text(
 
     body_lines = lines[i + 1:]
 
+    if body_lines[-1] == b'':
+        body_lines = body_lines[:-1]
+
     return header_fields, body_lines
+
+
+def render_message_source_text(
+        header_fields,
+        body_lines,
+        max_line_length=MAX_LINE_LENGTH,
+        recommended_line_wrap_length=RECOMMENDED_LINE_WRAP_LENGTH,
+        line_separator=b'\r\n'
+        ):
+
+    if not line_separator in [b'\r\n', b'\n']:
+        raise ValueError("invalid `line_separator'")
+
+    ret = b''
+
+    for i in header_fields:
+        ret += i[0]
+        ret += b':'
+        for j in i[1]:
+            ret += j
+            ret += line_separator
+
+    ret += line_separator
+
+    for i in body_lines:
+        ret += i
+        ret += line_separator
+
+    # ret += line_separator
+
+    return ret
+
+
+def determine_line_separator(text):
+
+    if not isinstance(text, bytes):
+        raise TypeError("`text' value type must be bytes")
+
+    ret = None
+
+    f = text.find(b'\n')
+
+    if f != -1:
+        if f == 0 or text[f - 1] != b'\r':
+            ret = b'\n'
+        else:
+            ret = b'\r\n'
+
+    return ret
+
+
+def wrap_lines(
+        text,
+        first_line_length,
+        recommended_line_wrap_length=RECOMMENDED_LINE_WRAP_LENGTH,
+        line_separator=b'\r\n'
+        ):
+
+    if not isinstance(text, bytes):
+        raise TypeError("`text' value type must be bytes")
+
+    if not line_separator in [b'\r\n', b'\n']:
+        raise ValueError("invalid `line_separator'")
+
+    return
 
 
 def validate_header(header_fields):
