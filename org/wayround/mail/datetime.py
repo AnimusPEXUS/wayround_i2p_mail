@@ -5,6 +5,11 @@ import datetime
 import org.wayround.utils.datetime_iso8601
 
 
+DAY = [
+    "Mon", "Tue", "Wed", "Thu",
+    "Fri", "Sat", "Sun"
+    ]
+
 MONTH = [
     "Jan", "Feb", "Mar", "Apr",
     "May", "Jun", "Jul", "Aug",
@@ -78,5 +83,43 @@ def str_to_datetime(text):
             0,
             tz
             )
+
+    return ret
+
+
+def datetime_to_str(dt, day_name=True, second=True):
+
+    if dt.tzinfo is None:
+        raise ValueError("`dt' must contain tzinfo")
+
+    tz = org.wayround.utils.datetime_iso8601.format_tz(
+        dt.tzinfo,
+        sep=False,
+        minu=True,
+        zed=False
+        )
+
+    ret = ''
+
+    if day_name:
+        ret += '{},'.format(DAY[dt.weekday()])
+
+    if ret != '':
+        ret += ' '
+
+    month = MONTH[dt.month - 1]
+
+    ret += '{day:02d} {month} {year:04d} {hour:02d}:{minute:02d}'.format(
+        day=dt.day,
+        month=month,
+        year=dt.year,
+        hour=dt.hour,
+        minute=dt.minute
+        )
+
+    if second:
+        ret += ':{:02d}'.format(dt.second)
+
+    ret += ' {}'.format(tz)
 
     return ret
