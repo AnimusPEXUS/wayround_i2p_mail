@@ -1,10 +1,19 @@
 
 MAX_LINE_LENGTH = 998
 RECOMMENDED_LINE_WRAP_LENGTH = 78
-FIELD_MINIMUM_COUNT_ONE = ['orig-date', 'from']
+
+STANDARD_FIELDS = [
+    'Date', 'From', 'Sender', 'Reply-To', 'To', 'Cc', 'Bcc', 'Message-ID',
+    'In-Reply-To', 'References', 'Subject', 'Comments', 'Keywords',
+    'Resent-Date', "Resent-From", "Resent-Sender", "Resent-To",
+    "Resent-Cc", "Resent-Bcc", "Resent-Message-ID"
+    ]
+FIELD_MINIMUM_COUNT_ONE = [
+    'Date', 'From'
+    ]
 FIELD_MAXIMUM_COUNT_ONE = [
-    'orig-date', 'from', 'sender', 'reply-to', 'to', 'cc', 'bcc', 'message-id',
-    'in-reply-to', 'references', 'subject'
+    'Date', 'From', 'Sender', 'Reply-To', 'To', 'Cc', 'Bcc', 'Message-ID',
+    'In-Reply-To', 'References', 'Subject'
     ]
 
 
@@ -202,34 +211,6 @@ def wrap_lines(
     return
 
 
-def validate_header(header_fields):
-    for i in FIELD_MINIMUM_COUNT_ONE:
-        count = 0
-        for j in header_fields:
-            if j[0].lower().strip() == i:
-                count += 1
-        if count < 1:
-            raise MessageRequiredFieldMissing(
-                "field `{}' must be found in message atleast one time".format(
-                    i
-                    )
-                )
-
-    for i in FIELD_MAXIMUM_COUNT_ONE:
-        count = 0
-        for j in header_fields:
-            if j[0].lower().strip() == i:
-                count += 1
-        if count > 1:
-            raise MessageExceedField(
-                "field `{}' count must be not bigger then one".format(
-                    i
-                    )
-                )
-
-    return
-
-
 def remove_rs_from_text(text):
     """
     Warning: this is dumb brainless function. It's blindly removes b'\\r's from
@@ -265,6 +246,34 @@ def validate_rn_separated_text(text):
                     "\\n must be prefixed with \\r, "
                     "but it's not at byte {}".format(i)
                     )
+
+    return
+
+
+def validate_header(header_fields):
+    for i in FIELD_MINIMUM_COUNT_ONE:
+        count = 0
+        for j in header_fields:
+            if j[0].lower().strip() == i:
+                count += 1
+        if count < 1:
+            raise MessageRequiredFieldMissing(
+                "field `{}' must be found in message atleast one time".format(
+                    i
+                    )
+                )
+
+    for i in FIELD_MAXIMUM_COUNT_ONE:
+        count = 0
+        for j in header_fields:
+            if j[0].lower().strip() == i:
+                count += 1
+        if count > 1:
+            raise MessageExceedField(
+                "field `{}' count must be not bigger then one".format(
+                    i
+                    )
+                )
 
     return
 
