@@ -333,6 +333,8 @@ def _find_comment_end(text, comments_list, start):
         if text[i] == b'(' and (i > 0 and text[i - 1] != b'\\'):
             i = _find_comment_end(text, comments_list, i)
 
+        i += 1
+
     if ret is None:
         raise MessageNoCommentEnd(
             "can't find comment end started at index: {}".format(start)
@@ -363,6 +365,8 @@ def find_comments(text):
 
         if text[i] == b'(' and (i > 0 and text[i - 1] != b'\\'):
             i = _find_comment_end(text, comments_list, i)
+
+        i += 1
 
     return ret
 
