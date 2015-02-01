@@ -195,6 +195,27 @@ def determine_line_separator(text):
     return ret
 
 
+def determine_line_separator_in_stream(stream):
+    """
+    Returns first line and it's terminator: tuple(terminator, bytes)
+    """
+
+    first_line = b''
+
+    line_separator = None
+
+    while True:
+        res = stream.read(1)
+
+        first_line += res
+
+        if res == b'\n':
+            line_separator = determine_line_separator(first_line)
+            break
+
+    return line_separator, first_line.strip()
+
+
 def wrap_lines(
         text,
         first_line_length,
