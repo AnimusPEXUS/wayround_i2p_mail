@@ -1,4 +1,15 @@
 
+
+"""
+The main difference between this module and wayround_org.http.message
+is what http is as streaming protocol, unlike e-mail, which is
+message oriented.
+"""
+
+
+import wayround_org.http.message
+
+
 MAX_LINE_LENGTH = 998
 RECOMMENDED_LINE_WRAP_LENGTH = 78
 
@@ -93,7 +104,7 @@ def parse_message_source_text(
 
     header_fields = []
 
-    lines = text.split(line_separator)
+    lines = wayround_org.http.message.split_lines(text, line_separator)
     lines_l = len(lines)
 
     for i in range(lines_l):
@@ -172,27 +183,11 @@ def render_message_source_text(
         ret += i
         ret += line_separator
 
-    # ret += line_separator
-
     return ret
 
 
 def determine_line_separator(text):
-
-    if not isinstance(text, bytes):
-        raise TypeError("`text' value type must be bytes")
-
-    ret = None
-
-    f = text.find(b'\n')
-
-    if f != -1:
-        if f == 0 or text[f - 1] != b'\r':
-            ret = b'\n'
-        else:
-            ret = b'\r\n'
-
-    return ret
+    return wayround_org.http.message.determine_line_terminator(text)
 
 
 def determine_line_separator_in_stream(stream):
@@ -209,7 +204,7 @@ def determine_line_separator_in_stream(stream):
 
         first_line += res
 
-        if res == b'\n':
+        if res == 13:
             line_separator = determine_line_separator(first_line)
             break
 
@@ -229,15 +224,12 @@ def wrap_lines(
     if not line_separator in [b'\r\n', b'\n']:
         raise ValueError("invalid `line_separator'")
 
+    # TODO
+
     return
 
 
 def remove_rs_from_text(text):
-    """
-    Warning: this is dumb brainless function. It's blindly removes b'\\r's from
-             text. You can say 'Hello!' to developers of software, by who's
-             means I need to write and use this shit.
-    """
     ret = text
     while b'\r' in ret:
         ret.remove(b'\r')
@@ -272,17 +264,27 @@ def validate_rn_separated_text(text):
 
 
 def validate_header(header_fields):
+
+    """
+    result: True - ok, False - errors found
+    """
+
+    errors = 0
+
     for i in FIELD_MINIMUM_COUNT_ONE:
         count = 0
         for j in header_fields:
             if j[0].lower().strip() == i:
                 count += 1
         if count < 1:
+            errors += 1
+            '''
             raise MessageRequiredFieldMissing(
                 "field `{}' must be found in message atleast one time".format(
                     i
                     )
                 )
+            '''
 
     for i in FIELD_MAXIMUM_COUNT_ONE:
         count = 0
@@ -290,11 +292,14 @@ def validate_header(header_fields):
             if j[0].lower().strip() == i:
                 count += 1
         if count > 1:
+            errors += 1
+            '''
             raise MessageExceedField(
                 "field `{}' count must be not bigger then one".format(
                     i
                     )
                 )
+            '''
 
     return
 
@@ -441,7 +446,7 @@ def unquote_pairs(text):
     Unquotes pairs
     """
 
-    ret
+    # TODO
 
     return
 
@@ -454,5 +459,7 @@ def field_value_to_text(text):
 
     `text' must be bytes
     """
+
+    # TODO
 
     return
