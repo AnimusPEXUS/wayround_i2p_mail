@@ -1,0 +1,3 @@
+
+
+STANDARD_LINE_TERMINATOR = b'\r\n'
