@@ -2,6 +2,7 @@
 import os
 import time
 import threading
+import socket
 
 import wayround_org.utils.path
 import wayround_org.utils.osutils
@@ -11,9 +12,12 @@ import wayround_org.socketserver.service
 
 import wayround_org.mail.server.config
 import wayround_org.mail.server.socket
-import wayround_org.mail.miscs
-
 import wayround_org.mail.server.directory
+import wayround_org.mail.server.server_imap_session
+import wayround_org.mail.server.server_smtp_session
+import wayround_org.mail.miscs
+import wayround_org.mail.imap
+import wayround_org.mail.smtp
 
 
 class Domain:
@@ -35,7 +39,7 @@ class Domain:
             raise TypeError("invalid `domain_config' type")
 
         self.server_obj = server_obj
-        self.domain_config = domain_config
+        self.cfg = domain_config
         self.callable_target = callable_target
 
         self.sockets = None
@@ -51,7 +55,7 @@ class Domain:
 
         self.sockets = wayround_org.socketserver.service.SocketServicePool2()
 
-        for i in self.domain_config.sockets:
+        for i in self.cfg.sockets:
             self.logger.info("            {}".format(i.repr_as_text()))
             self.sockets.append(
                 wayround_org.mail.server.socket.SocketService(
@@ -84,7 +88,7 @@ class Domain:
             service
             ):
         t = threading.Thread(
-            name="Domain `{}' thread".format(self.domain_config.domain),
+            name="Domain `{}' thread".format(self.cfg.domain),
             target=self.callable_target,
             args=(
                 utc_datetime,
@@ -114,8 +118,7 @@ class Server:
 
         self.cfg = None
 
-        self.gid = None
-        self.uid = None
+        self.general_cfg = None
 
         self.domains = []
 
@@ -124,7 +127,11 @@ class Server:
             )
 
         self.cfg = self.directory_tree.get_config()
-        
+
+        self.general_cfg = wayround_org.mail.server.config.GeneralConfig(
+            self.cfg['general']
+            )
+
         self._stop_event = threading.Event()
 
         self.logger = None
@@ -155,39 +162,24 @@ class Server:
         for i in self.domains:
             i.start()
 
-        self.gid = None
-        self.uid = None
+        if self.general_cfg.gid is not None:
+            os.setregid(
+                self.general_cfg.gid,
+                self.general_cfg.gid
+                )
 
-        try:
-            self.gid = self.cfg['general']['gid']
-        except KeyError:
-            pass
-        except TypeError:
-            pass
-
-        try:
-            self.uid = self.cfg['general']['uid']
-        except KeyError:
-            pass
-        except TypeError:
-            pass
-
-        self.gid, self.uid = wayround_org.utils.osutils.convert_gid_uid(
-            self.gid, self.uid
-            )
-
-        if self.gid is not None:
-            os.setregid(self.gid, self.gid)
-
-        if self.uid is not None:
-            os.setreuid(self.uid, self.uid)
+        if self.general_cfg.uid is not None:
+            os.setregid(
+                self.general_cfg.uid,
+                self.general_cfg.uid
+                )
 
         return
 
     def stop(self):
-        
+
         self._stop_event.set()
-    
+
         for i in self.domains:
             i.stop()
 
@@ -224,114 +216,53 @@ class Server:
             domain
             ):
         session_logger = self.directory_tree.create_session_logger(
-            timestamp=utc_datetime
+            timestamp=str(utc_datetime)
             )
 
         session_logger.info(
             '{timestamp} {type_} {to_domain}'
-            ' {from_addr} {from_port}'
-            ' {to_addr} {to_port}'
+            ' {from_addr}'
+            ' {to_addr}'
             .format(
-                utc_datetime,
-                serv,
-                serv_stop_event,
-                sock,
-                addr,
-                service,
-                domain
+                timestamp=utc_datetime,
+                type_=service.cfg.protocol,
+                to_domain=domain.cfg.domain,
+                from_addr=addr,
+                to_addr=service.cfg.repr_as_text()
                 )
             )
 
         if service.cfg.protocol == 'imap':
-            self.imap_session(
-                utc_datetime,
-                serv,
-                serv_stop_event,
-                sock,
-                addr,
-                service,
-                domain,
-                session_logger
-                )
+            imap_session = \
+                wayround_org.mail.server.server_imap_session.\
+                ImapSessionHandler(
+                    self,
+                    utc_datetime,
+                    serv,
+                    serv_stop_event,
+                    sock,
+                    addr,
+                    service,
+                    domain,
+                    session_logger
+                    )
+            imap_session.start()
         elif service.cfg.protocol == 'smtp':
-            self.smtp_session(
-                utc_datetime,
-                serv,
-                serv_stop_event,
-                sock,
-                addr,
-                service,
-                domain,
-                session_logger
-                )
+            smtp_session = \
+                wayround_org.mail.server.server_smtp_session.\
+                SmtpSessionHandler(
+                    self,
+                    utc_datetime,
+                    serv,
+                    serv_stop_event,
+                    sock,
+                    addr,
+                    service,
+                    domain,
+                    session_logger
+                    )
+            smtp_session.start()
         else:
             raise Exception("programming error")
         session_logger.stop()
-        return
-
-    def imap_session(
-            self,
-            utc_datetime,
-            serv,
-            serv_stop_event,
-            sock,
-            addr,
-            service,
-            domain
-            ):
-        lbl_reader = wayround_org.utils.socket.LblRecvReaderBuffer(
-            sock,
-            # recv_size=4096,
-            line_terminator=b'\0\n'
-            )
-        lbl_reader.start()
-        sock.sendall(
-            b'* OK IMAP4rev1 Service Ready'
-            + wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
-            )
-
-        while True:
-        
-            if self._stop_event.is_set():
-                break
-
-            print(
-                "[{}] waiting for input: {}".format(
-                    utc_datetime,
-                    line
-                    )
-                )
-                
-            line = lbl_reader.nb_get_next_line(self._stop_event)
-
-            if self._stop_event.is_set():
-                break
-            
-            if line == None:
-                
-
-            print(
-                "[{}] got line from client: {}".format(
-                    utc_datetime,
-                    line
-                    )
-                )
-    
-        if self._stop_event.is_set():
-            self.socket.shutdown(socket.SHUT_RDWR)
-            self.socket.close()
-
-        lbl_reader.stop()
-        return
-
-    def smtp_session(
-            self,
-            utc_datetime,
-            serv,
-            serv_stop_event,
-            sock,
-            addr,
-            service,
-            domain
-            ):
         return

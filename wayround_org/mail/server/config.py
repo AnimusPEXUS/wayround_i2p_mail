@@ -9,14 +9,30 @@ class GeneralConfig:
 
     def __init__(self, data_dict):
 
-        self.domains = []
-        self.admins = []
-        self.hard_passwords = []
-        self.aliases = []
+        self.gid = None
+        self.uid = None
 
-        for i in ['domains', 'admins', 'hard_passwords', 'aliases']:
+        self.password_mode = 'plain'
+
+        for i in ['gid', 'uid', 'password_mode']:
             if i in data_dict:
                 setattr(self, i, data_dict[i])
+
+        self.gid, self.uid = wayround_org.utils.osutils.convert_gid_uid(
+            self.gid,
+            self.uid
+            )
+
+        self.check_config()
+
+        return
+
+    def check_config(self):
+
+        if not self.password_mode in ['plain']:
+            raise ValueError(
+                "general config: invalid `password_mode' value"
+                )
 
         return
 
@@ -105,11 +121,6 @@ class SocketConfig:
                 )
 
         if self.protocol == 'smtp':
-
-            if self.ssl_mode != 'initial':
-                raise ValueError(
-                    "if protocol == 'smtp', then ssl_mode can be only 'initial'"
-                    )
 
             if not self.smtp_mode in ['transport', 'submission']:
                 raise ValueError(
