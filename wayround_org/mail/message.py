@@ -2,30 +2,23 @@
 
 """
 The main difference between this module and wayround_org.http.message
-is what http is as streaming protocol, unlike e-mail, which is
+is what http is a streaming protocol, unlike e-mail, which is
 message oriented.
 """
 
 
 import wayround_org.http.message
 
+import wayround_org.mail.miscs
 
-MAX_LINE_LENGTH = 998
-RECOMMENDED_LINE_WRAP_LENGTH = 78
 
-STANDARD_FIELDS = [
-    'Date', 'From', 'Sender', 'Reply-To', 'To', 'Cc', 'Bcc', 'Message-ID',
-    'In-Reply-To', 'References', 'Subject', 'Comments', 'Keywords',
-    'Resent-Date', "Resent-From", "Resent-Sender", "Resent-To",
-    "Resent-Cc", "Resent-Bcc", "Resent-Message-ID"
-    ]
-FIELD_MINIMUM_COUNT_ONE = [
-    'Date', 'From'
-    ]
-FIELD_MAXIMUM_COUNT_ONE = [
-    'Date', 'From', 'Sender', 'Reply-To', 'To', 'Cc', 'Bcc', 'Message-ID',
-    'In-Reply-To', 'References', 'Subject'
-    ]
+MAX_LINE_LENGTH = wayround_org.mail.miscs.MAX_LINE_LENGTH
+RECOMMENDED_LINE_WRAP_LENGTH = wayround_org.mail.miscs.RECOMMENDED_LINE_WRAP_LENGTH
+
+STANDARD_FIELDS = wayround_org.mail.miscs.STANDARD_FIELDS
+FIELD_MINIMUM_COUNT_ONE = wayround_org.mail.miscs.FIELD_MINIMUM_COUNT_ONE
+FIELD_MAXIMUM_COUNT_ONE = wayround_org.mail.miscs.FIELD_MAXIMUM_COUNT_ONE
+STANDARD_LINE_TERMINATOR=wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
 
 
 class MessageTooLongLines(Exception):
@@ -63,7 +56,7 @@ class MessageSourceInvalidWrap(Exception):
 def parse_message_source_text(
         text,
         max_line_length=MAX_LINE_LENGTH,
-        line_separator=b'\r\n'
+        line_separator=STANDARD_LINE_TERMINATOR
         ):
     """
     `text' value must be bytes because RFC5322 talking all the time
@@ -162,7 +155,7 @@ def render_message_source_text(
         body_lines,
         max_line_length=MAX_LINE_LENGTH,
         recommended_line_wrap_length=RECOMMENDED_LINE_WRAP_LENGTH,
-        line_separator=b'\r\n'
+        line_separator=STANDARD_LINE_TERMINATOR
         ):
 
     if not line_separator in [b'\r\n', b'\n']:
@@ -215,7 +208,7 @@ def wrap_lines(
         text,
         first_line_length,
         recommended_line_wrap_length=RECOMMENDED_LINE_WRAP_LENGTH,
-        line_separator=b'\r\n'
+        line_separator=STANDARD_LINE_TERMINATOR
         ):
 
     if not isinstance(text, bytes):
@@ -264,7 +257,6 @@ def validate_rn_separated_text(text):
 
 
 def validate_header(header_fields):
-
     """
     result: True - ok, False - errors found
     """
@@ -433,7 +425,7 @@ def sort_comments(comments_list):
 
 def remove_comments_from_text(text, comments_list):
     """
-    comments_list: overlappings must be merged, values must be sorted.
+    comments_list: overlappings must be merged -> result must be sorted.
     """
     ret = text
     for i in range(len(comments_list) - 1, -1, 1):

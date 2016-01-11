@@ -114,7 +114,9 @@ class Server:
 
         self.data_dir_path = wayround_org.utils.path.abspath(data_dir_path)
 
-        self.directory_tree = None
+        self.directory = wayround_org.mail.server.directory.RootDirectory(
+            self.data_dir_path
+            )
 
         self.cfg = None
 
@@ -122,11 +124,7 @@ class Server:
 
         self.domains = []
 
-        self.directory_tree = wayround_org.mail.server.directory.RootDirectory(
-            self.data_dir_path
-            )
-
-        self.cfg = self.directory_tree.get_config()
+        self.cfg = self.directory.get_config()
 
         self.general_cfg = wayround_org.mail.server.config.GeneralConfig(
             self.cfg['general']
@@ -143,8 +141,8 @@ class Server:
 
         self._stop_event.clear()
 
-        self.logger = self.directory_tree.create_normal_logger()
-        self.logger_error = self.directory_tree.create_error_logger()
+        self.logger = self.directory.create_normal_logger()
+        self.logger_error = self.directory.create_error_logger()
 
         self.logger.info("starting server")
 
@@ -205,6 +203,32 @@ class Server:
         self.wait()
         return
 
+    def auth_user(self, domain, user, input_password_data):
+        """
+        return: True - authenticated, False - not authenticated. None - error
+        """
+
+        print("TODO: auth_user: input data checks!")
+
+        ret = None
+
+        if (not self.get_is_user_exists(domain, user)
+            or not self.get_is_user_enabled(domain, user)
+            ):
+            ret = False
+        else:
+            pwd_mode = self.cfg.password_mode
+
+            domain_obj = self.directory.get_domain(domain)
+
+            user_obj = domain_obj.get_user(user)
+
+            local_user_password_data = user_obj.get_password_data()
+
+            ret = input_password_data == local_user_password_data
+
+        return ret
+
     def callable_target_for_socket_pools(
             self,
             utc_datetime,
@@ -215,7 +239,7 @@ class Server:
             service,
             domain
             ):
-        session_logger = self.directory_tree.create_session_logger(
+        session_logger = self.directory.create_session_logger(
             timestamp=str(utc_datetime)
             )
 

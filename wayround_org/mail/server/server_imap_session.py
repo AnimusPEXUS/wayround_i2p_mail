@@ -13,15 +13,18 @@ import wayround_org.mail.imap
 
 class ImapSessionHandler:
 
-    def __init__(self, server, utc_datetime,
-                 socket_server,
-                 socket_server_stop_event,
-                 accepted_socket,
-                 accepted_address,
-                 service,
-                 domain,
-                 session_logger
-                 ):
+    def __init__(
+            self,
+            server,
+            utc_datetime,
+            socket_server,
+            socket_server_stop_event,
+            accepted_socket,
+            accepted_address,
+            service,
+            domain,
+            session_logger
+            ):
 
         if not isinstance(server, wayround_org.mail.server.server.Server):
             raise TypeError(

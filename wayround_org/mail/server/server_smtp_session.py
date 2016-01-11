@@ -12,15 +12,18 @@ import wayround_org.mail.smtp
 
 class SmtpSessionHandler:
 
-    def __init__(self, server, utc_datetime,
-                 socket_server,
-                 socket_server_stop_event,
-                 accepted_socket,
-                 accepted_address,
-                 service,
-                 domain,
-                 session_logger
-                 ):
+    def __init__(
+            self,
+            server,
+            utc_datetime,
+            socket_server,
+            socket_server_stop_event,
+            accepted_socket,
+            accepted_address,
+            service,
+            domain,
+            session_logger
+            ):
 
         if not isinstance(server, wayround_org.mail.server.server.Server):
             raise TypeError(
@@ -44,9 +47,16 @@ class SmtpSessionHandler:
 
         self.lbl_reader = None
 
+        self.directory = self.server.directory
+        self.spool_directory = self.directory.get_spool_directory()
+        self.actual_spool_element = self.spool_directory.new_element()
+
+        self.client_offered_message_size = None
+
         return
 
     def start(self):
+
         wayround_org.utils.socket.nb_handshake(self.accepted_socket)
 
         self.lbl_reader = wayround_org.utils.socket.LblRecvReaderBuffer(
@@ -93,13 +103,17 @@ class SmtpSessionHandler:
                 break
 
             line_parsed_command = parsed_cmd_line['command']
+            line_parsed_rest = parsed_cmd_line['rest']
+
+            print("cmd recognised: {}".format(line_parsed_command))
+            print("params        : {}".format(line_parsed_rest))
 
             cmd_method_name = 'cmd_{}'.format(line_parsed_command)
 
             if hasattr(self, cmd_method_name):
                 cmd_method = getattr(self, cmd_method_name)
 
-                cmd_method(line_parsed_command, parsed_cmd_line['rest'])
+                cmd_method(line_parsed_command, line_parsed_rest)
 
             else:
                 response = wayround_org.mail.smtp.s2c_response_format(
@@ -138,7 +152,12 @@ class SmtpSessionHandler:
                 )
             )
 
-        resp_lines = ['8BITMIME', 'SIZE', 'DSN', 'HELP']
+        resp_lines = [
+            '8BITMIME',
+            'SIZE',
+            'DSN',
+            'HELP'
+            ]
 
         for i in resp_lines[:-1]:
             response += wayround_org.mail.smtp.s2c_response_format(
@@ -158,3 +177,11 @@ class SmtpSessionHandler:
             response
             )
         return
+
+    '''
+    def cmd_MAIL(self, cmd, rest):
+        self.client_offered_message_size
+        return
+
+    def cmd_MAIL_FROM
+    '''

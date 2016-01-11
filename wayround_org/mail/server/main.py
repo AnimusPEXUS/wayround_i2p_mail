@@ -4,6 +4,11 @@ import sys
 
 del sys.path[0]
 
+import wayround_org.utils.socket
+
+wayround_org.utils.socket.DEBUG_NB_FUNCS = True
+
+
 import logging
 
 import wayround_org.utils.program
