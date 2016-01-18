@@ -4,6 +4,8 @@ import threading
 import time
 import re
 import collections
+import weakref
+import threading
 
 import yaml
 
@@ -133,6 +135,10 @@ class RootDirectory:
 
         self.object_locker = wayround_org.utils.threading.ObjectLocker()
         self._spool_directory = SpoolDirectory(self)
+
+        self._get_domain_dict = weakref.WeakValueDictionary()
+        self._get_domain_lock = threading.Lock()
+
         return
 
     def create_normal_logger(self):
@@ -184,7 +190,7 @@ class RootDirectory:
         else:
             with self.object_locker.get_lock(file_name):
                 with open(file_name) as f:
-                    f.write(yaml.dump())
+                    f.write(yaml.dump(data))
 
         return ret
 
@@ -224,7 +230,16 @@ class RootDirectory:
         return self._spool_directory
 
     def get_domain(self, domain):
-        return Domain(self, domain)
+
+        with self._get_domain_lock:
+
+            if domain not in self._get_domain_dict:
+                _t = Domain(self, domain)
+                self._get_domain_dict[domain] = _t
+
+            ret = self._get_domain_dict[domain]
+
+        return ret
 
     def get_user(self, domain, user):
         domain_obj = self.get_domain(domain)
@@ -239,7 +254,7 @@ class RootDirectory:
     def get_is_user_exists(self, domain, user):
         domain_obj = self.get_domain(domain)
         user_obj = domain_obj.get_user(user)
-        ret = user_obj.get_is_exists(user)
+        ret = user_obj.get_is_exists()
         return ret
 
     def get_is_user_enabled(self, domain, user):
@@ -248,7 +263,7 @@ class RootDirectory:
         ret = user_obj.get_is_enabled()
         return ret
 
-    def __get__(self, domain):
+    def __getitem__(self, domain):
         return self.get_domain(domain)
 
     def __in__(self, domain):
@@ -268,6 +283,9 @@ class Domain:
         self.object_locker = self.root_dir_obj.object_locker
         self.domain = domain
         self.path = self.gen_path()
+
+        self._get_user_dict = weakref.WeakValueDictionary()
+        self._get_user_lock = threading.Lock()
         return
 
     def gen_path(self):
@@ -288,16 +306,24 @@ class Domain:
 
         config = self.get_config()
 
-        has_config = config is not None
+        has_config = False
+        enabled_in_config = False
 
-        enabled_in_config = 'enabled' in config
+        if isinstance(config, dict):
+            has_config = True
+            enabled_in_config = 'enabled' in config
 
         ret = has_dir and has_config and enabled_in_config
+
         return ret
 
     def get_is_enabled(self):
         cfg = self.get_config()
-        ret = bool(cfg['enabled'])
+        ret = (
+            isinstance(cfg, dict)
+            and 'enabled' in cfg
+            and cfg['enabled'] == True
+            )
         return ret
 
     def get_user_list(self):
@@ -330,9 +356,17 @@ class Domain:
         return self.get_enabled_user_list(invert=True)
 
     def get_user(self, name):
-        return User(self._root_dir_obj, self, name)
+        with self._get_user_lock:
 
-    def __get__(self, name):
+            if name not in self._get_user_dict:
+                _t = User(self, name)
+                self._get_user_dict[name] = _t
+
+            ret = self._get_user_dict[name]
+
+        return ret
+
+    def __getitem__(self, name):
         return self.get_user(name)
 
     def __in__(self, name):
@@ -388,8 +422,22 @@ class User:
     get_config = RootDirectory.get_config
     set_config = RootDirectory.set_config
 
-    get_is_exists = Domain.get_is_exists
-    get_is_enabled = Domain.get_is_enabled
+    def get_is_exists(self):
+        """
+
+        This does not takes into account result of get_is_exists() of parent
+        Domain instance. use get_is_user_exists() method of RootDirectory class
+        inst for taking Domain settings into account.
+        """
+        return Domain.get_is_exists(self)
+
+    def get_is_enabled(self):
+        """
+        This does not takes into account result of get_is_enabled() of parent
+        Domain instance. use get_is_user_enabled() method of RootDirectory
+        class inst for taking Domain settings into account.
+        """
+        return Domain.get_is_enabled(self)
 
     make_path = RootDirectory.make_path
 
@@ -479,7 +527,7 @@ class Message:
 
         verify_mail_element_name(name)
 
-        if not isinstance(maildir_obj, MailDirectory):
+        if not isinstance(maildir_obj, MailDir):
             raise TypeError(
                 "`maildir_obj' must be inst of MailDirectory"
                 )
@@ -527,9 +575,12 @@ class Message:
 
         # self.flagged.install_methods(self)
 
-        self.attachments = MessageAttachments(self)
+        # self.attachments = MessageAttachments(self)
 
         return
+
+    def gen_path(self):
+        return self.flagged.get_flag_path('data')
 
     @property
     def name(self):
@@ -603,10 +654,10 @@ class Message:
         return
 
     def get_attachments(self):
-        return self.message_obj.flagged.get_flag_data('attachments')
+        return self.flagged.get_flag_data('attachments')
 
     def set_attachments(self, data):
-        return self.message_obj.flagged.set_flag_data('attachments', data)
+        return self.flagged.set_flag_data('attachments', data)
 
 
 def check_message_meta_field_name(value):
@@ -633,6 +684,7 @@ def verify_attachments_data(data):
 
 class MessageAttachment:
 
+    '''
     @classmethod
     def new_from_dict(cls, data_dict):
         ret = cls(
@@ -641,13 +693,13 @@ class MessageAttachment:
 
             )
         return ret
+    '''
 
     def __init__(self, size, mime_type, data):
-        self.message_attachments_obj = message_attachments_obj
         return
 
     def gen_dict(self):
-        return ret
+        return
 
     def get_size(self):
         return
@@ -706,6 +758,11 @@ class SpoolDirectory:
 
 class SpoolElement:
 
+    # WARNING!: do not make Message class a child of SpoolElement
+    #           class and do not copy spool elements into users'
+    #           folders as is in spool to avoid disclosure of
+    #           confidential fields in 'to' list and like it.
+
     def __init__(self, spool_dir_obj, element_name):
 
         if not isinstance(spool_dir_obj, SpoolDirectory):
@@ -730,21 +787,28 @@ class SpoolElement:
                 # like 'to'
                 'from',
 
+                # message size proposed by client
+                'size',
+
                 # only flag. exists(set) if incomming smtp session is finished
                 # ok
-                'in_finished'
+                'from_finished'
 
                 # only flag. exists(set) if internal procedures finished trying
                 # send mail to destination
-                'out_finished',
+                'to_finished',
 
                 # list of destinations, which recived message without errors
-                'out_ok'
+                'to_ok'
 
-                # dict of destinations, which recived message with errors.
+                # dict of destinations, which received (or not received)
+                # message with errors.
                 # values are dicts with 'code' (int) and 'message' (str)
                 # as error message
-                'out_error'
+                'to_error',
+
+                # message size proposed by client
+                'auth_as',
                 ],
             object_locker=self.object_locker
             )
@@ -753,9 +817,11 @@ class SpoolElement:
 
         return
 
+    '''
     @property
     def element_name(self):
         return self._element_name
+    '''
 
     def gen_path(self):
         return self.flagged.get_flag_path('data')
@@ -773,26 +839,6 @@ class SpoolElement:
 
     def get_is_locked(self):
         return self.object_locker.get_is_locked(self.path)
-
-    def add_rept(self, value):
-        data = self.get_repts()
-        data.append(value)
-        data = list(set(data))
-        self.flagged.set_flag_data('repts', data)
-        return
-
-    def get_repts(self):
-        return self.flagged.get_flag_data('repts')
-
-    def add_repted(self, value):
-        data = self.get_repteds()
-        data.append(value)
-        data = list(set(data))
-        self.flagged.set_flag_data('repted', data)
-        return
-
-    def get_repteds(self):
-        return self.flagged.get_flag_data('repted')
 
     def init_data(self):
         with open(self.path, 'wb'):
@@ -826,4 +872,45 @@ class SpoolElement:
             self.flagged.set_flag('in_finished')
         else:
             self.flagged.unset_flag('in_finished')
+        return
+
+    def set_size(self, value):
+        if value is not None and not isinstance(value, int):
+            raise TypeError("`size' must be int")
+        self.flagged.set_flag_data('size', value)
+        return
+
+    def get_size(self):
+        ret = self.flagged.get_flag_data('size')
+        if len(list(ret.keys())) == 0:
+            ret = None
+        return ret
+
+    def get_from(self):
+        return self.flagged.get_flag_data('from')
+
+    def set_from(self, value):
+        # TODO: structure check
+        self.flagged.set_flag_data('from', value)
+        return
+
+    def get_to(self):
+        return self.flagged.get_flag_data('to')
+
+    def set_to(self, value):
+        # TODO: structure check
+        self.flagged.set_flag_data('to', value)
+        return
+
+    def add_to(self, value):
+        self.set_to(self.get_to() + [value])
+        return
+
+    def get_auth_as(self):
+        return self.flagged.get_flag_data('auth_as')
+
+    def set_auth_as(self, value):
+        if value is not None and not isinstance(value, str):
+            raise TypeError("`auth_as' must be None or str")
+        self.flagged.set_flag_data('auth_as', value)
         return

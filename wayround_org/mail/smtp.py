@@ -2,6 +2,9 @@
 import wayround_org.mail.miscs
 
 
+AUTHLESS_COMMANDS = ['AUTH', 'EHLO', 'HELO', 'NOOP', 'RSET', 'QUIT']
+
+
 def c2s_command_line_parse(data):
 
     if not isinstance(data, bytes):

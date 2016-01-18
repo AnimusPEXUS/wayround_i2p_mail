@@ -24,7 +24,7 @@ FIELD_MAXIMUM_COUNT_ONE = [
 class Address:
 
     @classmethod
-    def new_from_string(cls, value):
+    def new_from_str(cls, value):
 
         if not isinstance(value, str):
             raise TypeError("`value' must be str")

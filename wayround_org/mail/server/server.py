@@ -203,7 +203,7 @@ class Server:
         self.wait()
         return
 
-    def auth_user(self, domain, user, input_password_data):
+    def auth_user(self, domain, user, input_password_data, method='PLAIN'):
         """
         return: True - authenticated, False - not authenticated. None - error
         """
@@ -212,9 +212,17 @@ class Server:
 
         ret = None
 
-        if (not self.get_is_user_exists(domain, user)
-            or not self.get_is_user_enabled(domain, user)
+        if (not self.directory.get_is_user_exists(domain, user)
+                or not self.directory.get_is_user_enabled(domain, user)
             ):
+            print(
+                "user `{}@{}' exists ({}) and enabled ({})".format(
+                    user,
+                    domain,
+                    self.directory.get_is_user_exists(domain, user),
+                    self.directory.get_is_user_enabled(domain, user)
+                    )
+                )
             ret = False
         else:
             pwd_mode = self.cfg.password_mode
@@ -225,7 +233,16 @@ class Server:
 
             local_user_password_data = user_obj.get_password_data()
 
-            ret = input_password_data == local_user_password_data
+            # TODO: add other storage methods
+
+            if pwd_mode == 'PLAIN':
+
+                ret = input_password_data == local_user_password_data
+
+            else:
+                raise Exception("programming error")
+
+        print("auth '{}@{}' ret: {}".format(user, domain, ret))
 
         return ret
 

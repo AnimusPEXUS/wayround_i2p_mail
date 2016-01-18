@@ -32,20 +32,23 @@ class ImapSessionHandler:
                 "wayround_org.mail.server.server.Server"
                 )
 
+        # server connection
         self.server = server
 
-        self._stop_event = self.server._stop_event
-
+        # session specific objects
         self.utc_datetime = utc_datetime
         self.socket_server = socket_server
         self.accepted_socket = accepted_socket
         self.service = service
         self.domain = domain
-
         self.socket_server_stop_event = socket_server_stop_event
         self.accepted_address = accepted_address
         self.session_logger = session_logger
 
+        # emergincy break
+        self._stop_event = self.server._stop_event
+
+        # stream reader
         self.lbl_reader = None
 
         return
