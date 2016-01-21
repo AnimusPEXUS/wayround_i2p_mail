@@ -160,7 +160,7 @@ class RootDirectory:
             'error'
             )
 
-    def make_path(self):
+    def makedirs(self):
         os.makedirs(self.path, exist_ok=True)
         return
 
@@ -185,12 +185,9 @@ class RootDirectory:
 
         file_name = wayround_org.utils.path.join(self.path, 'config.yaml')
 
-        if not self.get_is_exists():
-            ret = False
-        else:
-            with self.object_locker.get_lock(file_name):
-                with open(file_name) as f:
-                    f.write(yaml.dump(data))
+        with self.object_locker.get_lock(file_name):
+            with open(file_name, 'w') as f:
+                f.write(yaml.dump(data))
 
         return ret
 
@@ -282,7 +279,12 @@ class Domain:
         self.root_dir_obj = root_dir_obj
         self.object_locker = self.root_dir_obj.object_locker
         self.domain = domain
+
         self.path = self.gen_path()
+        self.users_path = wayround_org.utils.path.join(
+            self.path,
+            USERS_DIR_NAME
+            )
 
         self._get_user_dict = weakref.WeakValueDictionary()
         self._get_user_lock = threading.Lock()
@@ -292,13 +294,18 @@ class Domain:
         return wayround_org.utils.path.join(
             self.root_dir_obj.path,
             DOMAINS_DIR_NAME,
-            self.domain
+            str(self.domain.encode('idna'), 'utf-8')
             )
 
-    make_path = RootDirectory.make_path
+    makedirs = RootDirectory.makedirs
 
     get_config = RootDirectory.get_config
     set_config = RootDirectory.set_config
+
+    def create(self):
+        self.makedirs()
+        self.set_is_enabled(self.get_is_enabled())
+        return
 
     def get_is_exists(self):
         ret = False
@@ -326,13 +333,21 @@ class Domain:
             )
         return ret
 
+    def set_is_enabled(self, value):
+        if not isinstance(value, bool):
+            raise TypeError("is_enabled value must be bool")
+        cfg = self.get_config()
+        cfg['enabled'] = value
+        self.set_config(cfg)
+        return
+
     def get_user_list(self):
         ret = []
 
-        lst = sorted(os.listdir(self.path))
+        lst = sorted(os.listdir(self.users_path))
 
         for i in lst:
-            j = wayround_org.utils.path.join(self.path, i)
+            j = wayround_org.utils.path.join(self.users_path, i)
             if os.path.isdir(j):
                 ret.append(i)
 
@@ -416,11 +431,13 @@ class User:
         return wayround_org.utils.path.join(
             self.domain_obj.path,
             USERS_DIR_NAME,
-            self.name
+            str(self.name.encode('idna'), 'utf-8')
             )
 
     get_config = RootDirectory.get_config
     set_config = RootDirectory.set_config
+
+    create = Domain.create
 
     def get_is_exists(self):
         """
@@ -439,7 +456,9 @@ class User:
         """
         return Domain.get_is_enabled(self)
 
-    make_path = RootDirectory.make_path
+    set_is_enabled = Domain.set_is_enabled
+
+    makedirs = RootDirectory.makedirs
 
     def get_maildir_root(self):
         return MailDirRoot(self)
@@ -490,7 +509,7 @@ class MailDir:
             )
 
     def listdir(self):
-        return os.listdir(self.path)
+        return sorted(os.listdir(self.path))
 
     def get_dir_list(self):
         ret = []
@@ -507,13 +526,18 @@ class MailDir:
         return ret
 
     def get_message_list(self):
-        ret = self.get_file_list()
+        lst = self.get_file_list()
 
-        for i in range(len(ret) - 1, -1, -1):
-            if not ret[i].endswith('.data'):
-                del ret[i]
-            else:
-                ret[i] = ret[i][:-5]
+        ret = []
+
+        for i in lst:
+            ji = wayround_org.utils.path.join(self.path, i)
+            if os.file.isfile(ji):
+                point_pos = i.rfind('.')
+                if point_pos != -1:
+                    i_name = i[:point_pos]
+                    if not i_name in ret:
+                        ret.append(i_name)
 
         return ret
 
@@ -736,7 +760,7 @@ class SpoolDirectory:
             SPOOL_DIR_NAME
             )
 
-    make_path = RootDirectory.make_path
+    makedirs = RootDirectory.makedirs
 
     def listdir(self):
         return os.listdir(self.path)
@@ -760,7 +784,7 @@ class SpoolElement:
 
     # WARNING!: do not make Message class a child of SpoolElement
     #           class and do not copy spool elements into users'
-    #           folders as is in spool to avoid disclosure of
+    #           folders 'as is' in spool to avoid disclosure of
     #           confidential fields in 'to' list and like it.
 
     def __init__(self, spool_dir_obj, element_name):
@@ -778,38 +802,73 @@ class SpoolElement:
             self._spool_dir_obj.path,
             self._element_name,
             [
+                # ===========================================================
+                # subject flags
+                # -----------------------------------------------------------
+
                 # unmodified recived message
                 'data',
-
-                # list of dicts: {'name': str, 'address': str}
-                'to',
-
-                # like 'to'
-                'from',
-
                 # message size proposed by client
                 'size',
+                # existing and enabled user under which client authenticated
+                # on submission
+                'auth_as',
 
-                # only flag. exists(set) if incomming smtp session is finished
-                # ok
-                'from_finished'
+                # ===========================================================
+                # "from" flags
+                # (flags and indicators concerning incomming messages)
+                # -----------------------------------------------------------
 
-                # only flag. exists(set) if internal procedures finished trying
-                # send mail to destination
+                # str (email addresse)
+                'from',
+
+                # only flag.
+                # considered to be True if is set (file exists) and has value
+                # of True.
+                # indicates what incomming mail accepted with no errors, i.e.:
+                #   - connection was not interrupted
+                #   - message transfer ended with <CRLF>.<CRLF>
+                #   - etc.
+                'from_finished',
+
+                # ===========================================================
+                # "to" flags
+                # (flags and indicators concerning incomming messages)
+                # -----------------------------------------------------------
+
+                # set of str (email addresses)
+                'to',
+
+                # only flag.
+                #
+                # considered to be True if is set (file exists) and has value
+                # of True.
+                #
+                # Indicates what spool processing threads finished doing any
+                # actions to this message and it's free to be removed from
+                # spool. This includes all/any tries to send messages to
+                # recipients
                 'to_finished',
 
+                # set of str (email addresses)
+                #
+                # Addresses not which not attempt to send (transport).
+                # can be set by submission accepting thread or by
+                # transportation thread in case of exhuasted tries to transport
+                # mail to destination.
+                'to_disabled',
+
                 # list of destinations, which recived message without errors
-                'to_ok'
+                'to_success',
 
                 # dict of destinations, which received (or not received)
                 # message with errors.
                 # values are dicts with 'code' (int) and 'message' (str)
                 # as error message
-                'to_error',
+                'to_errors',
 
-                # message size proposed by client
-                'auth_as',
                 ],
+            ['data'],  # flags to which YAML assess is invalid
             object_locker=self.object_locker
             )
 
@@ -841,38 +900,27 @@ class SpoolElement:
         return self.object_locker.get_is_locked(self.path)
 
     def init_data(self):
-        with open(self.path, 'wb'):
+        with self.flagged.open_flag('data', 'wb'):
             pass
         return
 
     def append_data(self, data):
-        if not self.object_locker.get_is_locked(self.path):
+        if not self.flagged.get_is_flag_locked('data'):
             raise Exception("append_data: object already locked. TODO")
-        with self.object_locker.get_lock(self.path):
-            with open(self.path, 'ab') as f:
+        with self.flagged.get_flag_lock('data'):
+            with self.flagged.open_flag('data', 'ab') as f:
                 f.write(data)
         return
 
-    def get_data_size(self):
-        return os.stat(self.path).st_size
-
-    def get_data_part(self, index=None, size=None):
-        with self.object_locker.get_lock(self.path):
-            with open(self.path, 'rb') as f:
-                if index is not None:
-                    f.seek(index)
-                ret = f.read(size)
+    def get_data(self, offset=None, size=None):
+        with open(self.path, 'rb') as f:
+            f.seek(offset)
+            ret = f.read(size)
+            f.close()
         return ret
 
-    def get_in_finished(self):
-        return self.flagged.get_is_flag_set('in_finished')
-
-    def set_in_finished(self, value=True):
-        if value:
-            self.flagged.set_flag('in_finished')
-        else:
-            self.flagged.unset_flag('in_finished')
-        return
+    def get_real_size(self):
+        return os.stat(self.path).st_size
 
     def set_size(self, value):
         if value is not None and not isinstance(value, int):
@@ -886,16 +934,35 @@ class SpoolElement:
             ret = None
         return ret
 
+    def get_auth_as(self):
+        return self.flagged.get_flag_data('auth_as')
+
+    def set_auth_as(self, value):
+        if value is not None and not isinstance(value, str):
+            raise TypeError("`auth_as' must be None or str")
+        self.flagged.set_flag_data('auth_as', value)
+        return
+
     def get_from(self):
-        return self.flagged.get_flag_data('from')
+        return self.flagged.get_str('from')
 
     def set_from(self, value):
         # TODO: structure check
-        self.flagged.set_flag_data('from', value)
+        self.flagged.set_str('from', value)
+        return
+
+    def get_from_finished(self):
+        return self._x_bool_get_flag('from_finished')
+
+    def set_from_finished(self, value=True):
+        self._x_bool_set_flag('from_finished', value)
         return
 
     def get_to(self):
-        return self.flagged.get_flag_data('to')
+        ret = self.flagged.get_flag_data('to')
+        if not isinstance(ret, list):
+            ret = []
+        return ret
 
     def set_to(self, value):
         # TODO: structure check
@@ -906,11 +973,9 @@ class SpoolElement:
         self.set_to(self.get_to() + [value])
         return
 
-    def get_auth_as(self):
-        return self.flagged.get_flag_data('auth_as')
+    def get_to_finished(self):
+        return self._x_bool_get_flag('to_finished')
 
-    def set_auth_as(self, value):
-        if value is not None and not isinstance(value, str):
-            raise TypeError("`auth_as' must be None or str")
-        self.flagged.set_flag_data('auth_as', value)
+    def set_to_finished(self, value=True):
+        self._x_bool_set_flag('to_finished', value)
         return

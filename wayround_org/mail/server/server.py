@@ -225,7 +225,7 @@ class Server:
                 )
             ret = False
         else:
-            pwd_mode = self.cfg.password_mode
+            pwd_mode = self.general_cfg.password_mode
 
             domain_obj = self.directory.get_domain(domain)
 
@@ -235,7 +235,7 @@ class Server:
 
             # TODO: add other storage methods
 
-            if pwd_mode == 'PLAIN':
+            if pwd_mode == 'plain':
 
                 ret = input_password_data == local_user_password_data
 

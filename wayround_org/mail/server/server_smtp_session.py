@@ -195,7 +195,7 @@ class SmtpSessionHandler:
         resp_lines = [
             '8BITMIME',
             'SIZE',
-            'DSN',
+            'DNS',
             'HELP',
 
             'AUTH PLAIN'
@@ -408,44 +408,48 @@ passwd: '{}'
 
         return
 
-    def cmd_MAIL(self, cmd, rest):
+    def _2x_cmd(self, cmd, rest, sub_cmd_callables_dict):
+
         sub_cmd = None
 
         rest_l = len(rest)
 
         if rest_l == 0:
-            pass
+            raise Exception("TODO: return error to client")
         else:
             rest0 = rest[0]
-            if rest0.upper().startswith('FROM:'):
-                sub_cmd = 'FROM'
+
+            if not ':' in rest0:
+                wayround_org.utils.socket.nb_sendall(
+                    self.accepted_socket,
+                    wayround_org.mail.smtp.s2c_response_format(
+                        500,
+                        True,
+                        'Syntax error, command unrecognized'
+                        )
+                    )
             else:
-                pass
+                semi = rest0.find(':')
+                sub_cmd = rest0[:semi].upper().strip()
 
-        if sub_cmd is None:
-            response = wayround_org.mail.smtp.s2c_response_format(
-                500,
-                True,
-                'Syntax error, command unrecognized'
-                )
+                if not sub_cmd in sub_cmd_callables_dict:
+                    wayround_org.utils.socket.nb_sendall(
+                        self.accepted_socket,
+                        wayround_org.mail.smtp.s2c_response_format(
+                            500,
+                            True,
+                            'Syntax error, command unrecognized'
+                            )
+                        )
+                else:
+                    sub_cmd = sub_cmd_callables_dict[sub_cmd]
+                    print("calling {}".format(sub_cmd))
+                    sub_cmd('{} {}'.format(cmd, sub_cmd), rest)
 
-            wayround_org.utils.socket.nb_sendall(
-                self.accepted_socket,
-                response
-                )
+        return
 
-        else:
-
-            cmd_method_name = 'cmd_MAIL_{}'.format(sub_cmd)
-
-            if hasattr(self, cmd_method_name):
-                print("cmd recognised: {}".format(cmd_method_name))
-                print("params        : {}".format(rest))
-
-                cmd_method = getattr(self, cmd_method_name)
-                cmd_method('MAIL {}'.format(sub_cmd), rest)
-
-        # self.client_offered_message_size
+    def cmd_MAIL(self, cmd, rest):
+        self._2x_cmd('MAIL', rest, {'FROM': self.cmd_MAIL_FROM})
         return
 
     def cmd_MAIL_FROM(self, cmd, rest):
@@ -458,5 +462,81 @@ passwd: '{}'
             if rest1.upper().startswith('SIZE='):
                 size = int(rest1.split('=', 1)[1].strip())
                 self.actual_spool_element.set_size(size)
+
+        wayround_org.utils.socket.nb_sendall(
+            self.accepted_socket,
+            wayround_org.mail.smtp.s2c_response_format(
+                250,
+                True,
+                'Ok'
+                )
+            )
+
+        return
+
+    def cmd_RCPT(self, cmd, rest):
+        self._2x_cmd('RCPT', rest, {'TO': self.cmd_RCPT_TO})
+        return
+
+    def cmd_RCPT_TO(self, cmd, rest):
+        to_val = rest[0].split(':', 1)[1]
+        to_val = wayround_org.mail.miscs.Address.new_from_str(to_val)
+
+        # saving this anyway, not depending on success or fault in destination
+        # checks
+        self.actual_spool_element.add_to(to_val.authority.render_str())
+
+        if to_val.authority.userinfo is None:
+            pass  # TODO: terminate client!
+
+        # 'transport', 'submission'
+        if self.service.cfg.smtp_mode == 'transport':
+            if self.server.directory.get_is_user_enabled(
+                    to_val.authority.host,
+                    to_val.authority.gen_userinfo_like_http().name
+                    ):
+                wayround_org.utils.socket.nb_sendall(
+                    self.accepted_socket,
+                    wayround_org.mail.smtp.s2c_response_format(
+                        250,
+                        True,
+                        'Ok'
+                        )
+                    )
+            else:
+                wayround_org.utils.socket.nb_sendall(
+                    self.accepted_socket,
+                    wayround_org.mail.smtp.s2c_response_format(
+                        550,
+                        True,
+                        'mailbox not found'
+                        )
+                    )
+
+        elif self.service.cfg.smtp_mode == 'submission':
+            # user assumed to be authenticated
+            # so he's allowed anything
+            wayround_org.utils.socket.nb_sendall(
+                self.accepted_socket,
+                wayround_org.mail.smtp.s2c_response_format(
+                    250,
+                    True,
+                    'Ok'
+                    )
+                )
+        else:
+            raise Exception("programming error")
+
+        return
+
+    def cmd_DATA(self, cmd, rest):
+        while True:
+            line = self.lbl_reader.nb_get_next_line(self._stop_event)
+
+            line_stripped = line.strip()
+
+            if line_stripped == b'.':
+                self.actual_spool_element.set_to_finished(True)
+                break
 
         return
