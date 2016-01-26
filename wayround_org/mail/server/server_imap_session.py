@@ -1,6 +1,7 @@
 
 
 import socket
+import threading
 
 import wayround_org.utils.socket
 
@@ -131,6 +132,13 @@ class ImapSessionHandler:
             self.accepted_socket.close()
 
         self.lbl_reader.stop()
+        self._stopped_event.set()
+
+        return
+
+    def stop(self):
+        self._stop_event.set()
+        self._stopped_event.wait()
         return
 
     def cmd_CAPABILITY(self, tag, cmd, rest):

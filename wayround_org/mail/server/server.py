@@ -141,8 +141,14 @@ class Server:
 
         self._stop_event.clear()
 
-        self.logger = self.directory.create_normal_logger()
-        self.logger_error = self.directory.create_error_logger()
+        self.logger = self.directory.create_normal_logger(
+            self.general_cfg.gid,
+            self.general_cfg.uid
+            )
+        self.logger_error = self.directory.create_error_logger(
+            self.general_cfg.gid,
+            self.general_cfg.uid
+            )
 
         self.logger.info("starting server")
 
@@ -167,10 +173,12 @@ class Server:
                 )
 
         if self.general_cfg.uid is not None:
-            os.setregid(
+            os.setreuid(
                 self.general_cfg.uid,
                 self.general_cfg.uid
                 )
+
+        self.directory.get_spool_directory().makedirs()
 
         return
 
@@ -213,8 +221,8 @@ class Server:
         ret = None
 
         if (not self.directory.get_is_user_exists(domain, user)
-                or not self.directory.get_is_user_enabled(domain, user)
-            ):
+                    or not self.directory.get_is_user_enabled(domain, user)
+                ):
             print(
                 "user `{}@{}' exists ({}) and enabled ({})".format(
                     user,

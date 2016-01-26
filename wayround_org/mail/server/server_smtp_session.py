@@ -1,5 +1,6 @@
 
 import socket
+import threading
 
 import wayround_org.utils.socket
 
@@ -44,8 +45,9 @@ class SmtpSessionHandler:
         self.accepted_address = accepted_address
         self.session_logger = session_logger
 
-        # emergincy break
-        self._stop_event = self.server._stop_event
+        # break system
+        self._stop_event = threading.Event()
+        self._stopped_event = threading.Event()
 
         # stream reader
         self.lbl_reader = None
@@ -66,9 +68,13 @@ class SmtpSessionHandler:
 
     def start(self):
 
+        threading.Thread(target=self._server_stop_watcher).start()
+
         wayround_org.utils.socket.nb_handshake(self.accepted_socket)
 
         self.actual_spool_element.set_auth_as(None)
+        self.actual_spool_element.set_input_data_finished(False)
+        self.actual_spool_element.set_quit_ok(False)
 
         self.lbl_reader = wayround_org.utils.socket.LblRecvReaderBuffer(
             self.accepted_socket,
@@ -173,6 +179,26 @@ class SmtpSessionHandler:
 
         self.lbl_reader.stop()
 
+        threading.Thread(target=self.stop).start()
+
+        self._stopped_event.set()
+
+        return
+
+    def stop(self):
+        self._stop_event.set()
+        self._stopped_event.wait()
+        return
+
+    def _server_stop_watcher(self):
+        while True:
+            if self._stop_event.is_set():
+                break
+
+            if self.server._stop_event.is_set():
+                self.stop()
+
+            time.sleep(1)
         return
 
     def cmd_EHLO(self, cmd, rest):
@@ -455,7 +481,10 @@ passwd: '{}'
     def cmd_MAIL_FROM(self, cmd, rest):
         from_val = rest[0].split(':', 1)[1]
         from_val = wayround_org.mail.miscs.Address.new_from_str(from_val)
-        self.actual_spool_element.set_from(from_val.render_dict())
+        from_val.authority.userinfo.password = None
+        self.actual_spool_element.set_from(
+            from_val.authority.render_str()
+            )
 
         if len(rest) > 1:
             rest1 = rest[1]
@@ -493,7 +522,7 @@ passwd: '{}'
         if self.service.cfg.smtp_mode == 'transport':
             if self.server.directory.get_is_user_enabled(
                     to_val.authority.host,
-                    to_val.authority.gen_userinfo_like_http().name
+                    to_val.authority.userinfo.name
                     ):
                 wayround_org.utils.socket.nb_sendall(
                     self.accepted_socket,
@@ -530,13 +559,51 @@ passwd: '{}'
         return
 
     def cmd_DATA(self, cmd, rest):
+
+        wayround_org.utils.socket.nb_sendall(
+            self.accepted_socket,
+            wayround_org.mail.smtp.s2c_response_format(
+                354,
+                True,
+                ''
+                )
+            )
+
         while True:
             line = self.lbl_reader.nb_get_next_line(self._stop_event)
 
-            line_stripped = line.strip()
-
-            if line_stripped == b'.':
-                self.actual_spool_element.set_to_finished(True)
+            if self._stop_event.is_set():
                 break
+
+            if line.strip() == b'.':
+
+                wayround_org.utils.socket.nb_sendall(
+                    self.accepted_socket,
+                    wayround_org.mail.smtp.s2c_response_format(
+                        250,
+                        True,
+                        'Ok'
+                        )
+                    )
+
+                self.actual_spool_element.set_input_data_finished(True)
+                break
+
+            self.actual_spool_element.append_data(line)
+
+        return
+
+    def cmd_QUIT(self, cmd, rest):
+        wayround_org.utils.socket.nb_sendall(
+            self.accepted_socket,
+            wayround_org.mail.smtp.s2c_response_format(
+                221,
+                True,
+                'Ok'
+                )
+            )
+        self.actual_spool_element.set_quit_ok(True)
+
+        threading.Thread(target=self.stop).start()
 
         return

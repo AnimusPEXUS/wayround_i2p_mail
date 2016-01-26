@@ -141,23 +141,29 @@ class RootDirectory:
 
         return
 
-    def create_normal_logger(self):
+    def create_normal_logger(self, group=None, user=None):
         return wayround_org.utils.log.Log(
             self.logs_path,
-            'normal'
+            'normal',
+            group=group,
+            user=user
             )
 
-    def create_session_logger(self, timestamp):
+    def create_session_logger(self, timestamp, group=None, user=None):
         return wayround_org.utils.log.Log(
             self.logs_path,
             'session',
-            timestamp=timestamp
+            timestamp=timestamp,
+            group=group,
+            user=user
             )
 
-    def create_error_logger(self):
+    def create_error_logger(self, group=None, user=None):
         return wayround_org.utils.log.Log(
             self.logs_path,
-            'error'
+            'error',
+            group=group,
+            user=user
             )
 
     def makedirs(self):
@@ -796,6 +802,7 @@ class SpoolElement:
 
         self._spool_dir_obj = spool_dir_obj
         self.object_locker = self._spool_dir_obj.object_locker
+        self.lock = None
         self._element_name = element_name
 
         self.flagged = wayround_org.utils.flagged_file.FlaggedFile(
@@ -822,14 +829,21 @@ class SpoolElement:
                 # str (email addresse)
                 'from',
 
-                # only flag.
-                # considered to be True if is set (file exists) and has value
-                # of True.
-                # indicates what incomming mail accepted with no errors, i.e.:
+                # bool
+                #
+                # True: indicates what incomming mail accepted with no errors,
+                #       i.e.:
                 #   - connection was not interrupted
                 #   - message transfer ended with <CRLF>.<CRLF>
                 #   - etc.
-                'from_finished',
+                #
+                # False: message reciving was interrupted before <CRLF>.<CRLF>
+                'input_data_finished',
+
+                # bool
+                #
+                # 'input_data_finished' + QUIT command processed successfuly
+                'quit_ok',
 
                 # ===========================================================
                 # "to" flags
@@ -888,11 +902,11 @@ class SpoolElement:
     def get_is_exists(self):
         return os.path.isfile(self.path)
 
-    def lock(self):
+    def acquire(self):
         self.object_locker.get_lock(self.path).acquire()
         return
 
-    def unlock(self):
+    def release(self):
         self.object_locker.get_lock(self.path).release()
         return
 
@@ -905,7 +919,8 @@ class SpoolElement:
         return
 
     def append_data(self, data):
-        if not self.flagged.get_is_flag_locked('data'):
+        if self.flagged.get_is_flag_locked('data'):
+            # TODO: use utils.threading.CallQueue here
             raise Exception("append_data: object already locked. TODO")
         with self.flagged.get_flag_lock('data'):
             with self.flagged.open_flag('data', 'ab') as f:
@@ -951,11 +966,18 @@ class SpoolElement:
         self.flagged.set_str('from', value)
         return
 
-    def get_from_finished(self):
-        return self._x_bool_get_flag('from_finished')
+    def get_input_data_finished(self):
+        return self.flagged.get_bool('input_data_finished')
 
-    def set_from_finished(self, value=True):
-        self._x_bool_set_flag('from_finished', value)
+    def set_input_data_finished(self, value=True):
+        self.flagged.set_bool('input_data_finished', value)
+        return
+
+    def get_quit_ok(self):
+        return self.flagged.get_bool('quit_ok')
+
+    def set_quit_ok(self, value=True):
+        self.flagged.set_bool('quit_ok', value)
         return
 
     def get_to(self):
@@ -974,8 +996,8 @@ class SpoolElement:
         return
 
     def get_to_finished(self):
-        return self._x_bool_get_flag('to_finished')
+        return self.flagged.get_bool('to_finished')
 
     def set_to_finished(self, value=True):
-        self._x_bool_set_flag('to_finished', value)
+        self.flagged.set_bool('to_finished', value)
         return
