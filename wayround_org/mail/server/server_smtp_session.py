@@ -606,4 +606,10 @@ passwd: '{}'
 
         threading.Thread(target=self.stop).start()
 
+        t = threading.Thread(
+            target=self.server.spooler.process_spool_element,
+            args=(self.actual_spool_element.get_name(),)
+            )
+        t.start()
+
         return

@@ -12,7 +12,7 @@ class SpoolWorker:
             interval_seconds=600  # 10 minutes
             ):
 
-        if not isinstnace(server, wayround_org.mail.server.server.Server):
+        if not isinstance(server, wayround_org.mail.server.server.Server):
             raise TypeError(
                 "`server' must be inst of "
                 "wayround_org.mail.server.server.Server"
@@ -72,17 +72,26 @@ class SpoolWorker:
 
         ret = 0
 
+        logger = self.directory.create_spool_logger(name)
+        logger.info("started")
+
+        logger.info("getting spool element named {}".format(name))
+
         element = self.spool_dir.get_element(name)
         i_have_locked_it = False
 
         if not element.get_is_exists():
+            logger.error(
+                "spool element with such name does not exists. exiting"
+                )
             ret = 1
-            # TODO: log this?
 
         if ret == 0:
 
             if element.get_is_locked():
-                # TODO: log this?
+                logger.error(
+                    "this element is locked now. exiting"
+                    )
                 ret = 2
 
         if ret == 0:
@@ -90,7 +99,56 @@ class SpoolWorker:
             element.lock()
             i_have_locked_it = True
 
+            logger.info(
+                "I have locked this element now"
+                " and going to work with it"
+                )
+
+            local_recps = []
+            remote_recps = []
+
+            logger.info("determining local routes of element")
+            for i in element.get_to():
+
+                mail_addr_obj = \
+                    wayround_org.mail.miscs.Address.new_from_str(i)
+
+                # TODO: correctness check. <- here or into directory.py
+
+                domain = mail_addr_obj.authority.host
+                user = mail_addr_obj.authority.userinfo.name
+
+                del mail_addr_obj
+
+                if self.directory.get_is_user_enabled(domain, user):
+                    local_recps.append(
+                        self.directory.get_user(
+                            domain,
+                            user
+                            )
+                        )
+                else:
+                    remote_recps.append(i)
+
+            logger.info("result ({} item(s)):".format(len(local_recps)))
+            for i in local_recps:
+                logger.info(
+                    "    {}@{}".format(
+                        i.name,
+                        i.domain_obj.domain
+                        )
+                    )
+
+            for i in local_recps:
+                mdr = i.get_maildir_root()
+                inbox = mdr.get_dir('/Inbox')
+                inbox.makedirs()
+
+                element.copy_into_dir(inbox)
+
         if i_have_locked_it:
             element.unlock()
+
+        logger.stop()
 
         return

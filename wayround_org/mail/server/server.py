@@ -15,6 +15,7 @@ import wayround_org.mail.server.socket
 import wayround_org.mail.server.directory
 import wayround_org.mail.server.server_imap_session
 import wayround_org.mail.server.server_smtp_session
+import wayround_org.mail.server.spool
 import wayround_org.mail.miscs
 import wayround_org.mail.imap
 import wayround_org.mail.smtp
@@ -134,6 +135,8 @@ class Server:
 
         self.logger = None
         self.logger_error = None
+        
+        self.spooler = None
 
         return
 
@@ -151,6 +154,10 @@ class Server:
             )
 
         self.logger.info("starting server")
+
+        self.spooler = wayround_org.mail.server.spool.SpoolWorker(
+            self
+            )
 
         self.logger.info("configuring domains")
         for i in self.cfg['domains']:

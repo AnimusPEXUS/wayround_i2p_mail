@@ -6,6 +6,7 @@ import re
 import collections
 import weakref
 import threading
+import shutil
 
 import yaml
 
@@ -90,6 +91,7 @@ MESSAGE_META_FIELDS = [
 
 DOMAINS_DIR_NAME = 'domains'
 USERS_DIR_NAME = 'users'
+MAIL_DIR_NAME = 'maildir'
 LOGS_DIR_NAME = 'logs'
 SPOOL_DIR_NAME = 'spool'
 
@@ -158,6 +160,12 @@ class RootDirectory:
             user=user
             )
 
+    def create_spool_logger(self, name):
+        return wayround_org.utils.log.Log(
+            self.logs_path,
+            'spool-{}'.format(name)
+            )
+
     def create_error_logger(self, group=None, user=None):
         return wayround_org.utils.log.Log(
             self.logs_path,
@@ -205,10 +213,10 @@ class RootDirectory:
 
         if os.path.isdir(self.domains_path):
             for i in os.listdir(self.domains_path):
-                if os.path.isdir(
-                        wayround_org.utils.path.join(self.domains_path, i)
-                        ):
-                    ret.append(i)
+                i_lower = i.lower()  # only lower case domain names are valid
+                j = wayround_org.utils.path.join(self.domains_path, i_lower)
+                if os.path.isdir(j):
+                    ret.append(i_lower)
 
         return ret
 
@@ -353,9 +361,10 @@ class Domain:
         lst = sorted(os.listdir(self.users_path))
 
         for i in lst:
-            j = wayround_org.utils.path.join(self.users_path, i)
+            i_lower = i.lower()  # only lower case domain names are valid
+            j = wayround_org.utils.path.join(self.users_path, i_lower)
             if os.path.isdir(j):
-                ret.append(i)
+                ret.append(i_lower)
 
         return ret
 
@@ -485,6 +494,10 @@ class User:
 class MailDirRoot:
 
     def __init__(self, user_obj):
+
+        if not isinstance(user_obj, User):
+            raise TypeError("`user_obj' must be inst of User")
+
         self.user_obj = user_obj
         self.path = self.gen_path()
         return
@@ -492,21 +505,30 @@ class MailDirRoot:
     def gen_path(self):
         return wayround_org.utils.path.join(
             self.user_obj.path,
-            'Maildir'
+            MAIL_DIR_NAME
             )
 
+    makedirs = RootDirectory.makedirs
+
     def get_dir(self, path):
-        return MailDir(self.user_obj, path)
+        return MailDir(self, path)
 
 
 class MailDir:
 
     def __init__(self, maildir_root_obj, subpath):
+
+        if not isinstance(maildir_root_obj, MailDirRoot):
+            raise TypeError("`maildir_root_obj' must be inst of MailDirRoot")
+
         self.maildir_root_obj = maildir_root_obj
-        self.object_locker = self.maildir_root_obj.object_locker
-        self.subpath = subpath
+        self.object_locker = self.maildir_root_obj.user_obj.object_locker
+        self.subpath = subpath.strip()
+        self.subpath = self.subpath.strip('/')
         self.path = self.gen_path()
         return
+
+    makedirs = RootDirectory.makedirs
 
     def gen_path(self):
         return wayround_org.utils.path.join(
@@ -802,7 +824,6 @@ class SpoolElement:
 
         self._spool_dir_obj = spool_dir_obj
         self.object_locker = self._spool_dir_obj.object_locker
-        self.lock = None
         self._element_name = element_name
 
         self.flagged = wayround_org.utils.flagged_file.FlaggedFile(
@@ -888,30 +909,35 @@ class SpoolElement:
 
         self.path = self.gen_path()
 
+        self._lock = self.object_locker.get_lock(self.path)
+
         return
 
-    '''
-    @property
-    def element_name(self):
+    def get_name(self):
         return self._element_name
-    '''
 
     def gen_path(self):
         return self.flagged.get_flag_path('data')
 
-    def get_is_exists(self):
-        return os.path.isfile(self.path)
+    def __enter__(self):
+        self.acquire()
+        return self
 
-    def acquire(self):
-        self.object_locker.get_lock(self.path).acquire()
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.release()
         return
 
-    def release(self):
-        self.object_locker.get_lock(self.path).release()
-        return
+    def lock(self):
+        return self._lock.acquire()
+
+    def unlock(self):
+        return self._lock.release()
 
     def get_is_locked(self):
-        return self.object_locker.get_is_locked(self.path)
+        return self._lock.get_locked()
+
+    def get_is_exists(self):
+        return os.path.isfile(self.path)
 
     def init_data(self):
         with self.flagged.open_flag('data', 'wb'):
@@ -1000,4 +1026,24 @@ class SpoolElement:
 
     def set_to_finished(self, value=True):
         self.flagged.set_bool('to_finished', value)
+        return
+
+    def copy_into_dir(self, maildir_obj):
+        if not isinstance(maildir_obj, MailDir):
+            raise TypeError("`maildir_obj' must be inst of MailDir")
+
+        flags = ['data', 'size']
+
+        '''
+        flags = self.flagged.get_possible_flags_copy()
+        for i in ['data']:
+            if i in flags:
+                flags.remove(i)
+        '''
+
+        for i in flags:
+            shutil.copy2(
+                self.flagged.get_flag_path(i),
+                maildir_obj.path
+                )
         return
