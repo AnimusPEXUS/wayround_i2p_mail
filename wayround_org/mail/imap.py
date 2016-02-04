@@ -65,3 +65,12 @@ def s2c_response_format(tag, code, comment=None):
     ret += wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
 
     return ret
+
+
+def string_param_parse(value):
+    ret = ''
+    if value.startswith('"') and value.endswith('"'):
+        ret = value[1:-1]
+    else:
+        ret = value
+    return ret

@@ -101,11 +101,13 @@ class SocketConfig:
         ssl_txt = None
         if self.ssl is not None:
             ssl_txt = self.ssl.repr_as_text()
-        ret = "protocol: {}, address: {}, port: {:6}, SSL: [{}]".format(
+        ret = ("proto: {}, addr: {}, "
+               "port: {:5}, SSL: [{}], SSL_mode: {}").format(
             self.protocol,
             self.address,
             self.port,
-            ssl_txt
+            ssl_txt,
+            self.ssl_mode
             )
         return ret
 

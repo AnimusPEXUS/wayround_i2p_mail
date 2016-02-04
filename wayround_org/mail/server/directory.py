@@ -1,93 +1,22 @@
 
+import collections
+import datetime
+import glob
 import os
+import re
+import shutil
 import threading
 import time
-import re
-import collections
 import weakref
-import threading
-import shutil
 
 import yaml
 
-import wayround_org.utils.path
-import wayround_org.utils.log
 import wayround_org.utils.flagged_file
-import wayround_org.utils.time
+import wayround_org.utils.log
+import wayround_org.utils.path
 import wayround_org.utils.threading
+import wayround_org.utils.time
 
-'''
-
-NAMING CONVENTIONS:
-
-    NOTE: this module consideres terms [user 'registered'] and [user 'exists']
-          as synonims: exists == registered; [not registered] == [not exists].
-
-          And 'exists' name used in all callable names and values linked to
-          User class.
-
-SPOOL DIRECTORY DEDICATION:
-
-    Spool directory is the placement for messages which arriving from smtp
-    clients.
-
-    Spool directory implimentation in this module aims to be only mechanical.
-    It's does not do any right management or accepptance allowance for
-    registered or unregistered users. so spool directory can be used in both
-    finall mail accepting server or in mail relay system.
-
-    -----------------------
-    case 1 of 2: Finall MTA
-    -----------------------
-
-    MTA SMTP server should do only minimal checks before deciding to pass
-    message into spool:
-
-        1. Mail from unregistered user can be accepted into spool only if
-           it's destination available locally. Else message should not be
-           passed into spool and SMTP client shoul be informed about access
-           restriction.
-
-        2. Mail comming from registered (and enabled) user, can be passed into
-           spool and relayed into any direction: into local or into remote
-           destination.
-
-    Described above checks should be done by spool working process too
-    (which, probably, is the relay mechanism too). So Yes, probably this is
-    a double work.
-
-    -------------------------
-    case 2 of 2: Relaying MTA
-    -------------------------
-
-    In this case, server does not have local storage, and it's only mission is
-    to pass message to destination or to other relay.
-
-    ---
-
-    /-------------------------\
-    | registered SMTP session |
-    \-------------------------/
-       |
-       V                      /----------------\
-    /------------------\ ---> | local delivery |
-    | Spool Directory  |      \----------------/
-    \------------------/         /-----------------\
-       ^          \------------> | remote delivery |
-       |                         \-----------------/
-    /---------------------------\
-    | unregistered SMTP session |
-    \---------------------------/
-'''
-
-
-MESSAGE_META_FIELDS = [
-    'title',
-    'name',
-    'creation_date',
-    'seen?',
-    'sha512'
-    ]
 
 DOMAINS_DIR_NAME = 'domains'
 USERS_DIR_NAME = 'users'
@@ -97,6 +26,19 @@ SPOOL_DIR_NAME = 'spool'
 
 USER_NAME_RE = r'^[a-zA-Z][a-zA-Z0-9]*$'
 USER_NAME_RE_C = re.compile(USER_NAME_RE)
+
+
+TO_ERRORS_STRUCTURE = {
+    't': list,
+    '.': {
+        '{}': {
+            'result': {'t': str},
+            'code': {'t': int},
+            'message': {'t': str},
+            'datetime': {'t': datetime.datetime}
+            }
+        },
+    }
 
 
 def verify_mail_element_name(element_name):
@@ -151,11 +93,11 @@ class RootDirectory:
             user=user
             )
 
-    def create_session_logger(self, timestamp, group=None, user=None):
+    def create_session_logger(self, name, timestamp, group=None, user=None):
         return wayround_org.utils.log.Log(
             self.logs_path,
-            'session',
-            timestamp=timestamp,
+            'session-{}'.format(name),
+            # timestamp=timestamp,
             group=group,
             user=user
             )
@@ -523,18 +465,54 @@ class MailDir:
 
         self.maildir_root_obj = maildir_root_obj
         self.object_locker = self.maildir_root_obj.user_obj.object_locker
-        self.subpath = subpath.strip()
-        self.subpath = self.subpath.strip('/')
+        self.subpath = subpath.strip().strip('/')
+        print(
+            "Creating Maildir for subpath: '{}', '{}'".format(
+                self.subpath,
+                subpath
+                )
+            )
+
         self.path = self.gen_path()
+
+        j = wayround_org.utils.path.join(
+            self.maildir_root_obj.path,
+            self.subpath
+            )
+
+        if not wayround_org.utils.path.is_subpath_real(
+                j,
+                self.maildir_root_obj.path
+                ):
+            raise Exception("invalid path requested")
+        print(
+            "    resulting path: '{}'".format(
+                self.path
+                )
+            )
+
         return
 
     makedirs = RootDirectory.makedirs
 
     def gen_path(self):
-        return wayround_org.utils.path.join(
-            self.maildir_root_obj.path,
-            self.subpath
-            )
+
+        if self.subpath == '':
+            ret = self.maildir_root_obj.path
+        else:
+            ret = wayround_org.utils.path.join(
+                self.maildir_root_obj.path,
+                self.subpath
+                )
+
+        return ret
+
+    def create(self):
+        """
+        return: True - ok, else - error
+        """
+        self.makedirs()
+        return os.path.isdir(self.path)
 
     def listdir(self):
         return sorted(os.listdir(self.path))
@@ -569,33 +547,48 @@ class MailDir:
 
         return ret
 
+    def get_directory(self, subpath):
+        j = wayround_org.utils.path.join(self.subpath, subpath)
+        self.maildir_root_obj.get_maildir(j)
+        return
+
     def get_message(self, name):
+        """
+        Allows getting non existing messages for consecuontal creation
+        """
         return Message(self, name)
 
+    def glob(self, pathname, recursive=False):
 
-class Message:
+        # TODO: security checks required
 
-    def __init__(self, maildir_obj, name):
+        glob_res = glob.glob(
+            wayround_org.utils.path.join(self.path, pathname),
+            recursive=recursive
+            )
+
+        self_path_l = len(self.path)
+
+        for i in range(len(glob_res) - 1, -1, -1):
+            glob_res[i] = glob_res[i][self_path_l + 1:]
+
+        ret = glob_res
+
+        return ret
+
+
+class MessageFlags:
+
+    def __init__(self, path, name):
+
+        if not isinstance(path, str):
+            raise TypeError("`path' must be str")
 
         verify_mail_element_name(name)
 
-        if not isinstance(maildir_obj, MailDir):
-            raise TypeError(
-                "`maildir_obj' must be inst of MailDirectory"
-                )
-
-        self._maildir_obj = maildir_obj
-        self.object_locker = self.object_locker
-        self._name = name
-
-        if name.endswith('.data'):
-            raise ValueError("`name' must not end with '.data'")
-
-        self.path = self.gen_path()
-
         self.flagged = wayround_org.utils.flagged_file.FlaggedFile(
-            self.path,
-            self.name,
+            path,
+            name,
             [
                 # message it self. as sent by client. no any changes.
                 # untouchable
@@ -604,8 +597,10 @@ class Message:
                 # list of dicts with attachment(s) data
                 'attachments',
 
-                # dict. empty if not seen yet. if seen - has key 'seen' with
-                # iso data when was seen
+                # str or None.
+                #
+                # None - not seen yet.
+                # str - text of iso8601 format, date when seen
                 'seen',
 
                 # TODO
@@ -625,9 +620,88 @@ class Message:
                 ]
             )
 
-        # self.flagged.install_methods(self)
+
+class TransitionMessage(MessageFlags):
+
+    def __init__(self, path, name):
+
+        verify_mail_element_name(name)
+
+        if not isinstance(path, str):
+            raise TypeError("`path' must be str")
+
+        self._name = name
+
+        if name.endswith('.data'):
+            raise ValueError("`name' must not end with '.data'")
+
+        self.path = path
+
+        super().__init__(self.path, self._name)
+
+        return
+
+    def perform_transition(
+            self,
+            spool_element_obj,
+            maildir_obj
+            ):
+        self.import_from_spool_element(spool_element_obj)
+        self.gen_message(maildir_obj)
+        return
+
+    def import_from_spool_element(self, spool_element_obj):
+        if not isinstance(spool_element_obj, SpoolElement):
+            raise TypeError(
+                "`spool_element_obj' must be inst of SpoolElement"
+                )
+
+        flags = ['data', 'size']
+
+        '''
+        flags = self.flagged.get_possible_flags_copy()
+        for i in ['data']:
+            if i in flags:
+                flags.remove(i)
+        '''
+
+        for i in flags:
+            shutil.copy2(
+                spool_element_obj.flagged.get_flag_path(i),
+                self.path
+                )
+
+        return
+
+    def gen_message(self, maildir_obj):
+        msg = maildir_obj.get_message(self._name)
+        msg.import_from_transition(self)
+        return
+
+
+class Message(MessageFlags):
+
+    def __init__(self, maildir_obj, name):
+
+        verify_mail_element_name(name)
+
+        if not isinstance(maildir_obj, MailDir):
+            raise TypeError(
+                "`maildir_obj' must be inst of MailDirectory"
+                )
+
+        self._maildir_obj = maildir_obj
+        self.object_locker = self._maildir_obj.object_locker
+        self._name = name
+
+        if name.endswith('.data'):
+            raise ValueError("`name' must not end with '.data'")
+
+        self.path = self.gen_path()
 
         # self.attachments = MessageAttachments(self)
+
+        super().__init__(self.path, self.name)
 
         return
 
@@ -637,6 +711,18 @@ class Message:
     @property
     def name(self):
         return self._name
+
+    def makedirs(self):
+        ret = self._maildir_obj.makedirs()
+        return ret
+
+    def import_from_transition(self, transition_message_obj):
+        if not isinstance(transition_message_obj, TransitionMessage):
+            raise TypeError(
+                "`transition_message_obj' must be inst of TransitionMessage"
+                )
+
+        return
 
     def get_is_recent(self, session_id):
         recent_flag_path = self.flagged.get_flag_path('recent')
@@ -807,6 +893,15 @@ class SpoolDirectory:
     def get_element(self, name):
         return SpoolElement(self, name)
 
+    def get_transition_message(self, name):
+        return TransitionMessage(
+            wayround_org.utils.path.join(
+                self.path,
+                'spool_conversion_tmp'
+                ),
+            name
+            )
+
 
 class SpoolElement:
 
@@ -836,19 +931,6 @@ class SpoolElement:
 
                 # unmodified recived message
                 'data',
-                # message size proposed by client
-                'size',
-                # existing and enabled user under which client authenticated
-                # on submission
-                'auth_as',
-
-                # ===========================================================
-                # "from" flags
-                # (flags and indicators concerning incomming messages)
-                # -----------------------------------------------------------
-
-                # str (email addresse)
-                'from',
 
                 # bool
                 #
@@ -859,51 +941,125 @@ class SpoolElement:
                 #   - etc.
                 #
                 # False: message reciving was interrupted before <CRLF>.<CRLF>
-                'input_data_finished',
+                'data-ok',
 
                 # bool
                 #
-                # 'input_data_finished' + QUIT command processed successfuly
-                'quit_ok',
+                # 'data-ok' + QUIT command processed successfuly
+                'quit-ok',
+
+                # int - message size proposed by client with 'MAIL FROM' cmd
+                'size',
+
+                # str - local email with which client managed to authenticate
+                'auth-as',
+
+                # str - single line text
+                # 'Received' field string, which should be prepended to
+                # message during transition operation
+                'received',
+
+                # str - email address
+                # 'Return-Path' field string, which should be prepended to
+                # message during transition operation
+                'return-path',
+
+                # ===========================================================
+                # "from" flags
+                # (flags and indicators concerning incomming messages)
+                # -----------------------------------------------------------
+
+                # str - email address passed with 'MAIL FROM' cmd
+                # NOTE: in case of submission smtp service mode, this should be
+                #       equal to 'return-path', else this is security error.
+                'from',
+
+                # dict with struct:
+                #
+                # {
+                #     'remote_addr': str,  # ip and port tuple in case of IP family
+                #     'local_addr': str,  # same but for local part
+                #     'SSL': {  # None or dict
+                #         }
+                #     'datetime': datetime.datetime  # in UTC
+                #     }
 
                 # ===========================================================
                 # "to" flags
                 # (flags and indicators concerning incomming messages)
                 # -----------------------------------------------------------
 
-                # set of str (email addresses)
+                # set of 0 or more strs (email addresses)
                 'to',
 
-                # only flag.
+                # set of str (email addresses)
                 #
-                # considered to be True if is set (file exists) and has value
-                # of True.
+                # Addresses on which not attempt to send (transport).
+                # can be set by submission accepting thread or by
+                # transportation thread in case of exhuasted tries to transport
+                # mail to destination.
+                'to-disabled',
+
+                # set of str (e-mails), which recived message without errors
+                #
+                # NOTE: successful transfers must be added not only here but
+                #       also to to-disabled
+                'to-success',
+
+                # dict with following struct:
+
+                # mail purpuse - mini log
+                # saves not only errors, but also successes logs.
+                # must contain textual responses of servers.
+                #
+                # example and structural concept.
+                # {
+                #     # zero or more records. each key - an email to which wass
+                #     # made sending attempt
+                #
+                #     'johndoe@example.net': [
+                #
+                #         # zero or more dicts
+                #         # spooler can use this to limit number of attempts
+                #
+                #         {
+                #             'result': 'error',
+                #             'code': integer_code_here,
+                #             'message': 'Message exited maximum size limit',
+                #
+                #             # datetime when attempt was performed.
+                #             # on this must be based spooler
+                #             # sending reattempt delay
+                #
+                #             'datetime': value
+                #             },
+                #         {
+                #             'result': 'error',
+                #             'code': integer_code_here,
+                #             'message': 'some other error',
+                #             'datetime': value
+                #             },
+                #         {
+                #             'result': 'success',
+                #             'code': integer_code_here,
+                #             'message': 'message from server',
+                #             'datetime': value
+                #             }
+                #         ]
+                # }
+                'to-errors',
+
+                # bool
+                #
+                # considered to be True if get_bool() result equals True
                 #
                 # Indicates what spool processing threads finished doing any
                 # actions to this message and it's free to be removed from
                 # spool. This includes all/any tries to send messages to
                 # recipients
-                'to_finished',
-
-                # set of str (email addresses)
-                #
-                # Addresses not which not attempt to send (transport).
-                # can be set by submission accepting thread or by
-                # transportation thread in case of exhuasted tries to transport
-                # mail to destination.
-                'to_disabled',
-
-                # list of destinations, which recived message without errors
-                'to_success',
-
-                # dict of destinations, which received (or not received)
-                # message with errors.
-                # values are dicts with 'code' (int) and 'message' (str)
-                # as error message
-                'to_errors',
-
+                'to-finished',
                 ],
-            ['data'],  # flags to which YAML assess is invalid
+            ['data'],  # flags to which YAML access methods is invalid
             object_locker=self.object_locker
             )
 
@@ -960,90 +1116,161 @@ class SpoolElement:
             f.close()
         return ret
 
-    def get_real_size(self):
-        return os.stat(self.path).st_size
+    def get_data_size(self):
+        return self.flagged.get_flag_size('data')
 
-    def set_size(self, value):
-        if value is not None and not isinstance(value, int):
-            raise TypeError("`size' must be int")
-        self.flagged.set_flag_data('size', value)
+    def get_data_ok(self):
+        return self.flagged.get_bool('data-ok')
+
+    def set_data_ok(self, value):
+        self.flagged.set_bool('data-ok', value)
+        return
+
+    def get_quit_ok(self):
+        return self.flagged.get_bool('quit-ok')
+
+    def set_quit_ok(self, value):
+        self.flagged.set_bool('quit-ok', value)
         return
 
     def get_size(self):
-        ret = self.flagged.get_flag_data('size')
-        if len(list(ret.keys())) == 0:
-            ret = None
-        return ret
+        return self.flagged.get_int('size')
+
+    def set_size(self, value):
+        self.flagged.set_int_n('size', value)
+        return
 
     def get_auth_as(self):
-        return self.flagged.get_flag_data('auth_as')
+        return self.flagged.get_str('auth-as')
 
     def set_auth_as(self, value):
-        if value is not None and not isinstance(value, str):
-            raise TypeError("`auth_as' must be None or str")
-        self.flagged.set_flag_data('auth_as', value)
+        self.flagged.set_str_n('auth-as', value)
+        return
+
+    def get_received(self):
+        return self.flagged.get_str('received')
+
+    def set_received(self, value):
+        self.flagged.set_str_n('received', value)
+        return
+
+    def get_return_path(self):
+        return self.flagged.get_str('return-path')
+
+    def set_return_path(self, value):
+        self.flagged.set_str_n('return-path', value)
         return
 
     def get_from(self):
         return self.flagged.get_str('from')
 
     def set_from(self, value):
-        # TODO: structure check
-        self.flagged.set_str('from', value)
-        return
-
-    def get_input_data_finished(self):
-        return self.flagged.get_bool('input_data_finished')
-
-    def set_input_data_finished(self, value=True):
-        self.flagged.set_bool('input_data_finished', value)
-        return
-
-    def get_quit_ok(self):
-        return self.flagged.get_bool('quit_ok')
-
-    def set_quit_ok(self, value=True):
-        self.flagged.set_bool('quit_ok', value)
+        self.flagged.set_str_n('from', value)
         return
 
     def get_to(self):
-        ret = self.flagged.get_flag_data('to')
-        if not isinstance(ret, list):
-            ret = []
-        return ret
+        return self.flagged.get_str_set('to')
 
     def set_to(self, value):
-        # TODO: structure check
-        self.flagged.set_flag_data('to', value)
+        self.flagged.set_str_set('to', value)
         return
 
     def add_to(self, value):
-        self.set_to(self.get_to() + [value])
+        data = self.get_to()
+        data.add(value)
+        self.set_to(data)
         return
+
+    def get_to_disabled(self):
+        return self.flagged.get_str_set('to-disabled')
+
+    def set_to_disabled(self, value):
+        self.flagged.set_str_set('to-disabled', value)
+        return
+
+    def get_to_errors(self):
+        ret = {}
+
+        data = self.flagged.get_flag_data('to-errors')
+
+        if not check_to_errors_structure(data):
+            # errors in structure - must not lead to server stop, so no
+            # exception
+            ret = {}
+
+        return ret
+
+    def set_to_errors(self, data):
+        if not check_to_errors_structure(data):
+            raise ValueError("invalid structure of `to-errors' data")
+        self.flagged.set_flag_data('to-errors', data)
+        return ret
+
+    def add_to_errors(self, email_address, result, code, message, dt_value):
+
+        # TODO: add types checks
+
+        new_record = {
+            'result': result,
+            'code': code,
+            'message': message,
+            'datetime': dt_value
+            }
+
+        data = self.get_to_errors()
+
+        if email_address not in data:
+            data[email_address] = []
+
+        data[email_address].append(new_record)
+
+        return
+
+    def get_to_errors_count(self, email_address):
+        ret = 0
+        data = self.get_to_errors()
+        if email_address in data:
+            ret = len(data[email_address])
+        return ret
+
+    def get_to_errors_last_result(self, email_address):
+        ret = None
+        data = self.get_to_errors()
+        if email_address in data:
+            if len(data[email_address]) != 0:
+                ret = data[email_address][-1]['result']
+        return ret
 
     def get_to_finished(self):
-        return self.flagged.get_bool('to_finished')
+        return self.flagged.get_bool('to-finished')
 
-    def set_to_finished(self, value=True):
-        self.flagged.set_bool('to_finished', value)
+    def set_to_finished(self, value):
+        self.flagged.set_bool('to-finished', value)
         return
 
-    def copy_into_dir(self, maildir_obj):
-        if not isinstance(maildir_obj, MailDir):
-            raise TypeError("`maildir_obj' must be inst of MailDir")
 
-        flags = ['data', 'size']
+def check_to_errors_structure(data):
+    """
+    return: True - ok, else - error
+    """
 
-        '''
-        flags = self.flagged.get_possible_flags_copy()
-        for i in ['data']:
-            if i in flags:
-                flags.remove(i)
-        '''
+    ret = True
 
-        for i in flags:
-            shutil.copy2(
-                self.flagged.get_flag_path(i),
-                maildir_obj.path
-                )
-        return
+    error = False
+
+    if not error:
+        if not wayround_org.utils.types.struct_check(
+                data,
+                TO_ERRORS_STRUCTURE
+                ):
+            error = True
+
+    if not error:
+        for i in data.values():
+            if i['result'] not in ['error', 'success']:
+                error = True
+                break
+
+    ret = not error
+
+    return ret

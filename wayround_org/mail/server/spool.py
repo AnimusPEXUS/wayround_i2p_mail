@@ -1,5 +1,6 @@
 
 import threading
+import os.path
 
 import wayround_org.mail.server.server
 
@@ -30,6 +31,9 @@ class SpoolWorker:
         self.server = server
         self.directory = server.directory
         self.spool_dir = self.directory.get_spool_directory()
+
+        # os.makedirs(self.spool_conversion_dir_path, exist_ok=True)
+
         self.interval_seconds = interval_seconds
 
         self._stop_event = threading.Event()
@@ -141,10 +145,13 @@ class SpoolWorker:
 
             for i in local_recps:
                 mdr = i.get_maildir_root()
-                inbox = mdr.get_dir('/Inbox')
-                inbox.makedirs()
+                inbox = mdr.get_dir('/INBOX')
 
-                element.copy_into_dir(inbox)
+                tm = self.spool_dir.get_transition_message(element.name)
+
+                # NOTE: this can't be separated into thread, cause
+                #       spooler still need to maintain element's flags
+                tm.perform_transition(element, inbox)
 
         if i_have_locked_it:
             element.unlock()

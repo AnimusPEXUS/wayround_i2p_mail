@@ -1,6 +1,8 @@
 
 import socket
 import threading
+import time
+import ssl
 
 import wayround_org.utils.socket
 
@@ -46,6 +48,7 @@ class SmtpSessionHandler:
         self.session_logger = session_logger
 
         # break system
+        self._server_stop_event = self.socket_server_stop_event
         self._stop_event = threading.Event()
         self._stopped_event = threading.Event()
 
@@ -57,7 +60,7 @@ class SmtpSessionHandler:
         self.spool_directory = self.directory.get_spool_directory()
         self.actual_spool_element = self.spool_directory.new_element()
 
-        # current user auth. this value None only if user really passed
+        # current user auth. this value not None only if user really passed
         # authentication and really authenticated.
         # None - means user not authenticated
         self.user_requested_auth = None
@@ -66,14 +69,42 @@ class SmtpSessionHandler:
 
         return
 
-    def start(self):
+    def _server_stop_watcher(self):
+        while True:
+            if self._server_stop_event.is_set():
+                break
+
+            if self._stop_event.is_set():
+                break
+
+            time.sleep(1)
+
+        threading.Thread(target=self.stop).start()
+
+        return
+
+    def loop_enter(self):
 
         threading.Thread(target=self._server_stop_watcher).start()
 
         wayround_org.utils.socket.nb_handshake(self.accepted_socket)
 
+        self.session_logger.info("Certificate info")
+        self.session_logger.info("    base:")
+        if isinstance(self.accepted_socket, ssl.SSLSocket):
+            ssl_info = self.accepted_socket.cipher()
+            self.session_logger.info(
+                "        {}:{}:{}".format(
+                    ssl_info[1],
+                    ssl_info[0],
+                    ssl_info[2]
+                    )
+                )
+        else:
+            self.session_logger.info("        none")
+
         self.actual_spool_element.set_auth_as(None)
-        self.actual_spool_element.set_input_data_finished(False)
+        self.actual_spool_element.set_to_finished(False)
         self.actual_spool_element.set_quit_ok(False)
 
         self.lbl_reader = wayround_org.utils.socket.LblRecvReaderBuffer(
@@ -173,32 +204,40 @@ class SmtpSessionHandler:
                             )
                         )
 
-        if self._stop_event.is_set():
-            self.accepted_socket.shutdown(socket.SHUT_RDWR)
-            self.accepted_socket.close()
+            if self._server_stop_event.is_set():
+                self.session_logger.warning(
+                    "SMTP session {} at port {}"
+                    " recvd 'stop' signal from server".format(
+                        self,
+                        self.service.cfg.port
+                        )
+                    )
+
+            if self._stop_event.is_set():
+                self.session_logger.info(
+                    "SMTP session {} at port {}"
+                    " recvd 'stop' signal from internals".format(
+                        self,
+                        self.service.cfg.port
+                        )
+                    )
 
         self.lbl_reader.stop()
 
         threading.Thread(target=self.stop).start()
+
+        self.accepted_socket.shutdown(socket.SHUT_RDWR)
+        self.accepted_socket.close()
 
         self._stopped_event.set()
 
         return
 
     def stop(self):
+        if self.lbl_reader is not None:
+            self.lbl_reader.stop()
         self._stop_event.set()
         self._stopped_event.wait()
-        return
-
-    def _server_stop_watcher(self):
-        while True:
-            if self._stop_event.is_set():
-                break
-
-            if self.server._stop_event.is_set():
-                self.stop()
-
-            time.sleep(1)
         return
 
     def cmd_EHLO(self, cmd, rest):
@@ -560,6 +599,10 @@ passwd: '{}'
 
     def cmd_DATA(self, cmd, rest):
 
+        self.actual_spool_element.set_received(
+            self.format_recieved_string()
+            )
+
         wayround_org.utils.socket.nb_sendall(
             self.accepted_socket,
             wayround_org.mail.smtp.s2c_response_format(
@@ -586,7 +629,7 @@ passwd: '{}'
                         )
                     )
 
-                self.actual_spool_element.set_input_data_finished(True)
+                self.actual_spool_element.set_to_finished(True)
                 break
 
             self.actual_spool_element.append_data(line)
@@ -602,6 +645,7 @@ passwd: '{}'
                 'Ok'
                 )
             )
+
         self.actual_spool_element.set_quit_ok(True)
 
         threading.Thread(target=self.stop).start()
@@ -613,3 +657,65 @@ passwd: '{}'
         t.start()
 
         return
+
+    def format_recieved_string(self):
+        peer_name = self.accepted_socket.getpeername()
+        sock_name = self.accepted_socket.getsockname()
+        # print("peer_name: {}, sock_name: {}".format(peer_name, sock_name))
+
+        peer_info = socket.gethostbyaddr(peer_name[0])
+        sock_info = socket.gethostbyaddr(sock_name[0])
+
+        from_value = 'FROM {} ([{}])'.format(
+            peer_info[0], peer_info[2][0]
+            )
+
+        by_value = 'BY {} ([{}])'.format(
+            self.domain.cfg.domain,
+            sock_info[2][0]
+            )
+
+        with_value = 'WITH'
+
+        if isinstance(self.accepted_socket, ssl.SSLSocket):
+            if self.service.cfg.ssl_mode == 'starttls':
+                with_value += ' esmpts'
+            elif self.service.cfg.ssl_mode == 'initial':
+                with_value += ' smtps'
+            else:
+                raise Exception("programming error")
+        else:
+            with_value += ' smtp'
+
+        if isinstance(self.accepted_socket, ssl.SSLSocket):
+            with_value += ' ('
+            ssl_info = self.accepted_socket.cipher()
+            with_value += '{}:{}:{}'.format(
+                ssl_info[1],
+                ssl_info[0],
+                ssl_info[2]
+                )
+            with_value += ')'
+
+        with_value += ' ' + self.server.smtp_WITH_info_string
+
+        '''
+        ret = bytes(
+            '{} {} {}'.format(
+                from_value,
+                by_value,
+                with_value
+                ),
+            'utf-8'
+            )
+        '''
+
+        ret = '{} {} {}'.format(
+            from_value,
+            by_value,
+            with_value
+            )
+
+        # print("format_recieved_string ret: {}".format(ret))
+
+        return ret

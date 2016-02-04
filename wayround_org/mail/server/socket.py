@@ -50,7 +50,8 @@ class SocketService:
         except OSError as err:
             if err.args[0] == 98:
                 print(
-                    "Tryed to bind port on address: {}".format(
+                    "Tryed to bind port {} on address: {}".format(
+                        self.cfg.port,
                         self.cfg.address
                         )
                     )

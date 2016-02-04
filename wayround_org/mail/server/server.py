@@ -3,6 +3,7 @@ import os
 import time
 import threading
 import socket
+import ssl
 
 import wayround_org.utils.path
 import wayround_org.utils.osutils
@@ -10,14 +11,14 @@ import wayround_org.utils.socket
 
 import wayround_org.socketserver.service
 
+import wayround_org.mail.imap
+import wayround_org.mail.miscs
 import wayround_org.mail.server.config
-import wayround_org.mail.server.socket
 import wayround_org.mail.server.directory
 import wayround_org.mail.server.server_imap_session
 import wayround_org.mail.server.server_smtp_session
+import wayround_org.mail.server.socket
 import wayround_org.mail.server.spool
-import wayround_org.mail.miscs
-import wayround_org.mail.imap
 import wayround_org.mail.smtp
 
 
@@ -119,6 +120,8 @@ class Server:
             self.data_dir_path
             )
 
+        self.smtp_WITH_info_string = 'WROMS (0.0)'
+
         self.cfg = None
 
         self.general_cfg = None
@@ -135,7 +138,7 @@ class Server:
 
         self.logger = None
         self.logger_error = None
-        
+
         self.spooler = None
 
         return
@@ -193,7 +196,10 @@ class Server:
 
         self._stop_event.set()
 
+        time.sleep(1)
+
         for i in self.domains:
+            print("stopping domain {}".format(i))
             i.stop()
 
         if self.logger is not None:
@@ -228,7 +234,7 @@ class Server:
         ret = None
 
         if (not self.directory.get_is_user_exists(domain, user)
-                    or not self.directory.get_is_user_enabled(domain, user)
+                or not self.directory.get_is_user_enabled(domain, user)
                 ):
             print(
                 "user `{}@{}' exists ({}) and enabled ({})".format(
@@ -272,6 +278,10 @@ class Server:
             domain
             ):
         session_logger = self.directory.create_session_logger(
+            name='{}-{}'.format(
+                service.cfg.protocol,
+                utc_datetime
+                ),
             timestamp=str(utc_datetime)
             )
 
@@ -302,7 +312,7 @@ class Server:
                     domain,
                     session_logger
                     )
-            imap_session.start()
+            imap_session.loop_enter()
         elif service.cfg.protocol == 'smtp':
             smtp_session = \
                 wayround_org.mail.server.server_smtp_session.\
@@ -317,7 +327,7 @@ class Server:
                     domain,
                     session_logger
                     )
-            smtp_session.start()
+            smtp_session.loop_enter()
         else:
             raise Exception("programming error")
         session_logger.stop()
