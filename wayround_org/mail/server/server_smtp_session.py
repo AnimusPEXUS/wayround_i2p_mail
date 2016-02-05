@@ -3,6 +3,7 @@ import socket
 import threading
 import time
 import ssl
+import datetime
 
 import wayround_org.utils.socket
 
@@ -603,6 +604,10 @@ passwd: '{}'
             self.format_recieved_string()
             )
 
+        self.actual_spool_element.set_received_date(
+            datetime.datetime.utcnow()
+            )
+
         wayround_org.utils.socket.nb_sendall(
             self.accepted_socket,
             wayround_org.mail.smtp.s2c_response_format(
@@ -679,13 +684,13 @@ passwd: '{}'
 
         if isinstance(self.accepted_socket, ssl.SSLSocket):
             if self.service.cfg.ssl_mode == 'starttls':
-                with_value += ' esmpts'
+                with_value += ' ESMTPS'
             elif self.service.cfg.ssl_mode == 'initial':
-                with_value += ' smtps'
+                with_value += ' SMTPS'
             else:
                 raise Exception("programming error")
         else:
-            with_value += ' smtp'
+            with_value += ' SMTP'
 
         if isinstance(self.accepted_socket, ssl.SSLSocket):
             with_value += ' ('

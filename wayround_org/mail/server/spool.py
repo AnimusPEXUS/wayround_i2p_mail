@@ -147,11 +147,12 @@ class SpoolWorker:
                 mdr = i.get_maildir_root()
                 inbox = mdr.get_dir('/INBOX')
 
-                tm = self.spool_dir.get_transition_message(element.name)
+                tm = self.spool_dir.get_transition_message(element.get_name())
 
                 # NOTE: this can't be separated into thread, cause
-                #       spooler still need to maintain element's flags
-                tm.perform_transition(element, inbox)
+                #       spooler still need to maintain element's flags and
+                #       remain spool element locked
+                tm.perform_transition(element, inbox, logger)
 
         if i_have_locked_it:
             element.unlock()

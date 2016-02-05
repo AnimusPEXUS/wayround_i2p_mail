@@ -17,6 +17,8 @@ import wayround_org.utils.path
 import wayround_org.utils.threading
 import wayround_org.utils.time
 
+import wayround_org.mail.server.directory_flag_methods
+
 
 DOMAINS_DIR_NAME = 'domains'
 USERS_DIR_NAME = 'users'
@@ -26,19 +28,6 @@ SPOOL_DIR_NAME = 'spool'
 
 USER_NAME_RE = r'^[a-zA-Z][a-zA-Z0-9]*$'
 USER_NAME_RE_C = re.compile(USER_NAME_RE)
-
-
-TO_ERRORS_STRUCTURE = {
-    't': list,
-    '.': {
-        '{}': {
-            'result': {'t': str},
-            'code': {'t': int},
-            'message': {'t': str},
-            'datetime': {'t': datetime.datetime}
-            }
-        },
-    }
 
 
 def verify_mail_element_name(element_name):
@@ -577,7 +566,9 @@ class MailDir:
         return ret
 
 
-class MessageFlags:
+class MessageFlags(
+        wayround_org.mail.server.directory_flag_methods.FlagMethods
+        ):
 
     def __init__(self, path, name):
 
@@ -594,40 +585,59 @@ class MessageFlags:
                 # untouchable
                 'data',
 
+                # None or utc datetime
+                'received-date',
+
+                # list of int or None
+                #    None - indicates what calculation didn't preformed or has
+                #    been interrupted
+                #
+                # describes byte positions of lines in data
+                'data-lines',
+
+                # None or dict
+                #    None - indicates what calculation didn't preformed or has
+                #    been interrupted
+                # dict must have following minimum structure. additional
+                # fields may be added (probably it will be 'attachments'
+                # section).
+                # {'header': {'begin': int, 'end': int},
+                #  'body': {'begin': int, 'end': int}}
+                'section-lines',
+
+                # None or str
+                'title',
+
                 # list of dicts with attachment(s) data
+                # {
+                # 'begin': int, # line number
+                # 'end': int, # line number
+                # 'content-type': str
+                # }
                 'attachments',
 
-                # str or None.
-                #
-                # None - not seen yet.
-                # str - text of iso8601 format, date when seen
+                # --v--V--v-- do no change names --v--V--v--
+                # all flag values in this block are bool
                 'seen',
-
-                # TODO
                 'answered',
-
-                # TODO
                 'flagged',
-
-                # flagged for deletion
                 'deleted',
-
-                # flagged as draft
                 'draft',
+                'recent',
+                # --^--A--^-- do no change names --^--A--^--
 
-                # TODO
-                'recent'
-                ]
+                ],
+            ['data']
             )
 
 
 class TransitionMessage(MessageFlags):
 
-    def __init__(self, path, name):
+    def __init__(self, dirpath, name):
 
         verify_mail_element_name(name)
 
-        if not isinstance(path, str):
+        if not isinstance(dirpath, str):
             raise TypeError("`path' must be str")
 
         self._name = name
@@ -635,7 +645,9 @@ class TransitionMessage(MessageFlags):
         if name.endswith('.data'):
             raise ValueError("`name' must not end with '.data'")
 
-        self.path = path
+        os.makedirs(dirpath, exist_ok=True)
+
+        self.path = dirpath
 
         super().__init__(self.path, self._name)
 
@@ -644,36 +656,179 @@ class TransitionMessage(MessageFlags):
     def perform_transition(
             self,
             spool_element_obj,
-            maildir_obj
+            maildir_obj,
+            spool_session_logger
             ):
-        self.import_from_spool_element(spool_element_obj)
-        self.gen_message(maildir_obj)
+        self.import_from_spool_element(
+            spool_element_obj,
+            spool_session_logger
+            )
+        self.gen_message(
+            maildir_obj,
+            spool_session_logger
+            )
         return
 
-    def import_from_spool_element(self, spool_element_obj):
+    def import_from_spool_element(
+            self,
+            spool_element_obj,
+            spool_session_logger,
+            stop_event=None
+            ):
         if not isinstance(spool_element_obj, SpoolElement):
             raise TypeError(
                 "`spool_element_obj' must be inst of SpoolElement"
                 )
 
-        flags = ['data', 'size']
+        # ------------------------------------------------------------------
 
-        '''
-        flags = self.flagged.get_possible_flags_copy()
-        for i in ['data']:
-            if i in flags:
-                flags.remove(i)
-        '''
+        spool_session_logger.info("Transferring data")
 
-        for i in flags:
-            shutil.copy2(
-                spool_element_obj.flagged.get_flag_path(i),
-                self.path
-                )
+        received = spool_element_obj.get_received()
+        return_path = spool_element_obj.get_return_path()
+
+        speo_file = spool_element_obj.flagged.open_flag('data', 'br')
+        tmeo_file = self.flagged.open_flag('data', 'bw')
+
+        if received is not None:
+            spool_session_logger.info("    prepending Received field")
+            tmeo_file.write(b"Received: ")
+            tmeo_file.write(bytes(received, 'utf-8'))
+            tmeo_file.write(wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR)
+
+        if return_path is not None:
+            spool_session_logger.info("    prepending Return-path field")
+            tmeo_file.write(b"Return-path: ")
+            tmeo_file.write(bytes(return_path, 'utf-8'))
+            tmeo_file.write(wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR)
+
+        spool_session_logger.info("    transferring rest of the data")
+
+        while True:
+            if stop_event is not None and stop_event.is_set():
+                break
+
+            buf = speo_file.read(2 * 1024**2)
+            if len(buf) == 0:
+                break
+
+            tmeo_file.write(buf)
+
+        speo_file.close()
+        tmeo_file.close()
+
+        del speo_file, tmeo_file, received, return_path
+
+        spool_session_logger.info("    DONE: data transfer complete")
+
+        # ------------------------------------------------------------------
+
+        spool_session_logger.info("Calculating data lines..")
+        self.calculate_data_lines_indexes(spool_session_logger, stop_event)
+        spool_session_logger.info("    DONE")
+
+        # print("get_data_lines: {}".format(self.get_data_lines()))
+
+        # ------------------------------------------------------------------
+
+        spool_session_logger.info("Determining sections..")
+        self.calculate_section_lines(spool_session_logger, stop_event)
+        spool_session_logger.info("    DONE")
+
+        # ------------------------------------------------------------------
 
         return
 
-    def gen_message(self, maildir_obj):
+    def calculate_data_lines_indexes(
+            self,
+            spool_session_logger,
+            stop_event,
+            line_length_bytes_limit=2 * 1024**2,  # 2 MiB
+            ):
+
+        ret = 0
+
+        input_invalid = False
+
+        data = []
+
+        tmeo_file = self.flagged.open_flag('data', 'br')
+
+        offset = 0
+
+        data.append(offset)
+
+        buff = b''
+
+        while True:
+            if stop_event is not None and stop_event.is_set():
+                break
+
+            if len(buff) >= line_length_bytes_limit:
+                input_invalid = True
+                break
+
+            tmeo_read_res = tmeo_file.read(500)
+
+            if len(tmeo_read_res) == 0:
+                # TODO: probably some input data check need to be added
+                #       for instance if buffer does not ends with line
+                #       seporator.
+                #       Although I think this is normal ending for this
+                #       loop.
+                break
+
+            buff += tmeo_read_res
+
+            while True:
+
+                if stop_event is not None and stop_event.is_set():
+                    break
+
+                bf_res = buff.find(
+                    wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+                    )
+
+                if bf_res == -1:
+                    break
+
+                else:
+                    offset = (
+                        offset +
+                        bf_res +
+                        wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR_LEN
+                        )
+                    data.append(offset)
+                    buff = buff[
+                        bf_res +
+                        wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR_LEN:
+                        ]
+
+        if (stop_event is not None and stop_event.is_set()) or input_invalid:
+            self.set_data_lines_indexes(None)
+            ret = 1
+        else:
+            self.set_data_lines_indexes(data)
+
+        return ret
+
+    def calculate_section_lines(self, spool_session_logger, stop_event):
+        lines_count = self.get_data_lines_count()
+
+        index_of_header_end = None
+
+        for i in range(lines_count):
+            if stop_event is not None and stop_event.is_set():
+                break
+            line = self.get_data_line(i)
+            if line == wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR:
+
+        if index_of_header_end is None:
+            index_of_header_end = self.get_data_lines_index(-1)
+                    
+        return
+
+    def gen_message(self, maildir_obj, spool_session_logger):
         msg = maildir_obj.get_message(self._name)
         msg.import_from_transition(self)
         return
@@ -903,7 +1058,9 @@ class SpoolDirectory:
             )
 
 
-class SpoolElement:
+class SpoolElement(
+        wayround_org.mail.server.directory_flag_methods.FlagMethods
+        ):
 
     # WARNING!: do not make Message class a child of SpoolElement
     #           class and do not copy spool elements into users'
@@ -931,6 +1088,9 @@ class SpoolElement:
 
                 # unmodified recived message
                 'data',
+
+                # None or utc datetime
+                'received-date',
 
                 # bool
                 #
@@ -1094,183 +1254,3 @@ class SpoolElement:
 
     def get_is_exists(self):
         return os.path.isfile(self.path)
-
-    def init_data(self):
-        with self.flagged.open_flag('data', 'wb'):
-            pass
-        return
-
-    def append_data(self, data):
-        if self.flagged.get_is_flag_locked('data'):
-            # TODO: use utils.threading.CallQueue here
-            raise Exception("append_data: object already locked. TODO")
-        with self.flagged.get_flag_lock('data'):
-            with self.flagged.open_flag('data', 'ab') as f:
-                f.write(data)
-        return
-
-    def get_data(self, offset=None, size=None):
-        with open(self.path, 'rb') as f:
-            f.seek(offset)
-            ret = f.read(size)
-            f.close()
-        return ret
-
-    def get_data_size(self):
-        return self.flagged.get_flag_size('data')
-
-    def get_data_ok(self):
-        return self.flagged.get_bool('data-ok')
-
-    def set_data_ok(self, value):
-        self.flagged.set_bool('data-ok', value)
-        return
-
-    def get_quit_ok(self):
-        return self.flagged.get_bool('quit-ok')
-
-    def set_quit_ok(self, value):
-        self.flagged.set_bool('quit-ok', value)
-        return
-
-    def get_size(self):
-        return self.flagged.get_int('size')
-
-    def set_size(self, value):
-        self.flagged.set_int_n('size', value)
-        return
-
-    def get_auth_as(self):
-        return self.flagged.get_str('auth-as')
-
-    def set_auth_as(self, value):
-        self.flagged.set_str_n('auth-as', value)
-        return
-
-    def get_received(self):
-        return self.flagged.get_str('received')
-
-    def set_received(self, value):
-        self.flagged.set_str_n('received', value)
-        return
-
-    def get_return_path(self):
-        return self.flagged.get_str('return-path')
-
-    def set_return_path(self, value):
-        self.flagged.set_str_n('return-path', value)
-        return
-
-    def get_from(self):
-        return self.flagged.get_str('from')
-
-    def set_from(self, value):
-        self.flagged.set_str_n('from', value)
-        return
-
-    def get_to(self):
-        return self.flagged.get_str_set('to')
-
-    def set_to(self, value):
-        self.flagged.set_str_set('to', value)
-        return
-
-    def add_to(self, value):
-        data = self.get_to()
-        data.add(value)
-        self.set_to(data)
-        return
-
-    def get_to_disabled(self):
-        return self.flagged.get_str_set('to-disabled')
-
-    def set_to_disabled(self, value):
-        self.flagged.set_str_set('to-disabled', value)
-        return
-
-    def get_to_errors(self):
-        ret = {}
-
-        data = self.flagged.get_flag_data('to-errors')
-
-        if not check_to_errors_structure(data):
-            # errors in structure - must not lead to server stop, so no
-            # exception
-            ret = {}
-
-        return ret
-
-    def set_to_errors(self, data):
-        if not check_to_errors_structure(data):
-            raise ValueError("invalid structure of `to-errors' data")
-        self.flagged.set_flag_data('to-errors', data)
-        return ret
-
-    def add_to_errors(self, email_address, result, code, message, dt_value):
-
-        # TODO: add types checks
-
-        new_record = {
-            'result': result,
-            'code': code,
-            'message': message,
-            'datetime': dt_value
-            }
-
-        data = self.get_to_errors()
-
-        if email_address not in data:
-            data[email_address] = []
-
-        data[email_address].append(new_record)
-
-        return
-
-    def get_to_errors_count(self, email_address):
-        ret = 0
-        data = self.get_to_errors()
-        if email_address in data:
-            ret = len(data[email_address])
-        return ret
-
-    def get_to_errors_last_result(self, email_address):
-        ret = None
-        data = self.get_to_errors()
-        if email_address in data:
-            if len(data[email_address]) != 0:
-                ret = data[email_address][-1]['result']
-        return ret
-
-    def get_to_finished(self):
-        return self.flagged.get_bool('to-finished')
-
-    def set_to_finished(self, value):
-        self.flagged.set_bool('to-finished', value)
-        return
-
-
-def check_to_errors_structure(data):
-    """
-    return: True - ok, else - error
-    """
-
-    ret = True
-
-    error = False
-
-    if not error:
-        if not wayround_org.utils.types.struct_check(
-                data,
-                TO_ERRORS_STRUCTURE
-                ):
-            error = True
-
-    if not error:
-        for i in data.values():
-            if i['result'] not in ['error', 'success']:
-                error = True
-                break
-
-    ret = not error
-
-    return ret
