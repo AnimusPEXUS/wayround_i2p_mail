@@ -143,16 +143,17 @@ class SpoolWorker:
                         )
                     )
 
+            tm = self.spool_dir.get_transition_message(element.get_name())
+            tm.import_from_spool_element(element, logger)
+
             for i in local_recps:
                 mdr = i.get_maildir_root()
                 inbox = mdr.get_dir('/INBOX')
 
-                tm = self.spool_dir.get_transition_message(element.get_name())
+                tm.gen_message(inbox, logger)
 
-                # NOTE: this can't be separated into thread, cause
-                #       spooler still need to maintain element's flags and
-                #       remain spool element locked
-                tm.perform_transition(element, inbox, logger)
+            # TODO: add here routine for sending messages to other SMTP
+            #       servers
 
         if i_have_locked_it:
             element.unlock()

@@ -16,6 +16,14 @@ TO_ERRORS_STRUCTURE = {
         },
     }
 
+SECTION_LINES_SUB01_STRUCTURE = {
+    't': dict,
+    '{}': {
+        'first_line': {'t': int},
+        'last_line': {'t': int},
+        }
+    }
+
 
 def check_to_errors_structure(data):
     """
@@ -24,22 +32,52 @@ def check_to_errors_structure(data):
 
     ret = True
 
-    error = False
-
-    if not error:
+    if ret:
         if not wayround_org.utils.types.struct_check(
                 data,
                 TO_ERRORS_STRUCTURE
                 ):
-            error = True
+            ret = True
 
-    if not error:
+    if ret:
         for i in data.values():
             if i['result'] not in ['error', 'success']:
-                error = True
+                ret = True
                 break
 
-    ret = not error
+    return ret
+
+
+def check_section_lines_structure(data):
+    """
+    return: True - ok, else - error
+    """
+
+    ret = True
+
+    if ret:
+        if not isinstance(data, dict):
+            ret = False
+
+    if ret:
+        for i in ['header', 'body']:
+            if i in data:
+                if not wayround_org.utils.types.struct_check(
+                        data[i],
+                        SECTION_LINES_SUB01_STRUCTURE
+                        ):
+                    ret = False
+                    break
+
+    if ret:
+        if 'others' in data:
+            for i in data['others']:
+                if not wayround_org.utils.types.struct_check(
+                        i,
+                        SECTION_LINES_SUB01_STRUCTURE
+                        ):
+                    ret = False
+                    break
 
     return ret
 
@@ -86,7 +124,7 @@ class FlagMethods:
         return self.flagged.get_int_list('data-lines')[index:count]
 
     def get_data_lines_index(self, index):
-        return self.get_data_lines_indexes(index)
+        return self.flagged.get_int_list('data-lines')[index]
 
     def set_data_lines_indexes(self, value):
         self.flagged.set_int_list('data-lines', value)
@@ -130,12 +168,33 @@ class FlagMethods:
         return ret
 
     def get_data_line(self, index):
-        '''
-        lcount = self.get_data_lines_count()
-        if index < 0:
-            index = lcount+index
-        '''
-        return self.get_data_lines(index, None)
+        ret = None
+        # -----------
+        # TODO: Now is 6 Feb 2016, 03:03 MSK
+        #       this is hack. I don't like it, but now I have headache.
+        #       this must be done somehow better, perhaps here
+        #       should be rewritten get_data_lines() code.
+        #       Calling get_data_lines() and taking only 1 value is overhead!
+        lines = self.get_data_lines(index, None)
+        if len(lines) > 0:
+            ret = lines[0]
+        # -----------
+        return ret
+
+    def get_section_lines(self):
+        ret = self.flagged.get_flag_data('section-lines')
+        if ret is not None and not check_section_lines_structure(ret):
+            ret = None
+        return ret
+
+    def set_section_lines(self, value):
+        if value is not None and not check_section_lines_structure(value):
+            # print(repr(value))
+            raise ValueError(
+                "invalid SECTION_LINES_STRUCTURE for `section-lines'"
+                )
+        self.flagged.set_flag_data('section-lines', value)
+        return
 
     def get_received_date(self):
         ret = self.flagged.get_flag_data('received-date')
@@ -270,3 +329,26 @@ class FlagMethods:
     def set_to_finished(self, value):
         self.flagged.set_bool('to-finished', value)
         return
+
+    def get_is_recent(self, session_id):
+        recent_flag_path = self.flagged.get_flag_path('recent')
+
+        if not self.flagged.get_is_flag_set('recent'):
+            y = yaml.dump({'session_id': session_id})
+            with open(recent_flag_path, 'w') as f:
+                f.write(y)
+
+            ret = True
+
+        else:
+
+            with open(recent_flag_path) as f:
+                ret = yaml.load(f.read())['session_id'] == session_id
+
+        return ret
+
+    def get_attachments(self):
+        return self.flagged.get_flag_data('attachments')
+
+    def set_attachments(self, data):
+        return self.flagged.set_flag_data('attachments', data)

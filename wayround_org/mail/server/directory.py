@@ -566,6 +566,35 @@ class MailDir:
         return ret
 
 
+class LockableMailElement:
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.release()
+        return
+
+    def acquire(self):
+        return self._lock.acquire()
+
+    def release(self):
+        return self._lock.release()
+
+    def lock(self):
+        return self._lock.acquire()
+
+    def unlock(self):
+        return self._lock.release()
+
+    def get_is_locked(self):
+        return self._lock.get_locked()
+
+    def get_is_exists(self):
+        return os.path.isfile(self.path)
+
+
 class MessageFlags(
         wayround_org.mail.server.directory_flag_methods.FlagMethods
         ):
@@ -601,8 +630,8 @@ class MessageFlags(
                 # dict must have following minimum structure. additional
                 # fields may be added (probably it will be 'attachments'
                 # section).
-                # {'header': {'begin': int, 'end': int},
-                #  'body': {'begin': int, 'end': int}}
+                # {'header': {'first_line': int, 'last_line': int},
+                #  'body': {'first_line': int, 'last_line': int}}
                 'section-lines',
 
                 # None or str
@@ -610,8 +639,8 @@ class MessageFlags(
 
                 # list of dicts with attachment(s) data
                 # {
-                # 'begin': int, # line number
-                # 'end': int, # line number
+                # 'first_line': int, # line index
+                # 'last_line': int, # line index
                 # 'content-type': str
                 # }
                 'attachments',
@@ -653,20 +682,9 @@ class TransitionMessage(MessageFlags):
 
         return
 
-    def perform_transition(
-            self,
-            spool_element_obj,
-            maildir_obj,
-            spool_session_logger
-            ):
-        self.import_from_spool_element(
-            spool_element_obj,
-            spool_session_logger
-            )
-        self.gen_message(
-            maildir_obj,
-            spool_session_logger
-            )
+    def gen_message(self, maildir_obj, spool_session_logger):
+        msg = maildir_obj.get_message(self._name)
+        msg.import_from_transition(self, spool_session_logger)
         return
 
     def import_from_spool_element(
@@ -733,6 +751,24 @@ class TransitionMessage(MessageFlags):
 
         spool_session_logger.info("Determining sections..")
         self.calculate_section_lines(spool_session_logger, stop_event)
+        spool_session_logger.info("    DONE")
+
+        # ------------------------------------------------------------------
+
+        spool_session_logger.info("Determining title..")
+        self.calculate_title(spool_session_logger, stop_event)
+        spool_session_logger.info("    DONE")
+
+        # ------------------------------------------------------------------
+
+        spool_session_logger.info("Setting up initial message flags..")
+        self.setup_initial_flags(spool_session_logger, stop_event)
+        spool_session_logger.info("    DONE")
+
+        # ------------------------------------------------------------------
+
+        spool_session_logger.info("Setting up initial message flags..")
+        self.setup_initial_flags(spool_session_logger, stop_event)
         spool_session_logger.info("    DONE")
 
         # ------------------------------------------------------------------
@@ -812,29 +848,110 @@ class TransitionMessage(MessageFlags):
 
         return ret
 
+    def _calculate_section_lines_sub_01(
+            self,
+            sections,
+            first_line_index,
+            last_line_index
+            ):
+        section = {
+            'first_line': first_line_index,
+            'last_line': last_line_index
+            }
+
+        if not 'header' in sections:
+            sections['header'] = section
+        elif not 'body' in sections:
+            sections['body'] = section
+        else:
+            if not 'others' in sections:
+                sections['others'] = []
+            sections['others'].append(
+                section
+                )
+        return
+
     def calculate_section_lines(self, spool_session_logger, stop_event):
+
+        ret = 0
+
         lines_count = self.get_data_lines_count()
 
-        index_of_header_end = None
+        sections = {}
+
+        first_line_index = 0
 
         for i in range(lines_count):
+
             if stop_event is not None and stop_event.is_set():
                 break
+
             line = self.get_data_line(i)
+
             if line == wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR:
 
-        if index_of_header_end is None:
-            index_of_header_end = self.get_data_lines_index(-1)
-                    
+                self._calculate_section_lines_sub_01(
+                    sections,
+                    first_line_index,
+                    i - 1
+                    )
+                first_line_index = i + 1
+
+        self._calculate_section_lines_sub_01(
+            sections,
+            first_line_index,
+            lines_count - 1
+            )
+
+        self.set_section_lines(sections)
+
+        return ret
+
+    def calculate_title(self, spool_session_logger, stop_event):
+        """
+        return:
+        True - title found. everything is ok
+        False - title not found. it's not consequance of errors
+        None - error occured or stopped by event
+        """
+
+        ret = False
+
+        lines_count = self.get_data_lines_count()
+
+        title = None
+
+        for i in range(lines_count):
+
+            if stop_event is not None and stop_event.is_set():
+                break
+
+            line = self.get_data_line(i)
+
+            if line.lower().startswith(b'title:'):
+                colon = line.find(b':')
+                title = line[colon:]
+                title = str(title, 'utf-8')
+                if title.startswith(' '):
+                    title = title[1:]
+                ret = True
+                break
+
+        self.set_title(title)
+
+        return ret
+
+    def setup_initial_flags(self, spool_session_logger, stop_event):
+        self.set_seen(False)
+        self.set_answered(False)
+        self.set_flagged(False)
+        self.set_deleted(False)
+        self.set_draft(False)
+        self.set_recent(False)
         return
 
-    def gen_message(self, maildir_obj, spool_session_logger):
-        msg = maildir_obj.get_message(self._name)
-        msg.import_from_transition(self)
-        return
 
-
-class Message(MessageFlags):
+class Message(MessageFlags, LockableMailElement):
 
     def __init__(self, maildir_obj, name):
 
@@ -852,11 +969,11 @@ class Message(MessageFlags):
         if name.endswith('.data'):
             raise ValueError("`name' must not end with '.data'")
 
+        super().__init__(self.path, self.name)
+
         self.path = self.gen_path()
 
         # self.attachments = MessageAttachments(self)
-
-        super().__init__(self.path, self.name)
 
         return
 
@@ -871,86 +988,35 @@ class Message(MessageFlags):
         ret = self._maildir_obj.makedirs()
         return ret
 
-    def import_from_transition(self, transition_message_obj):
+    def import_from_transition(self, transition_message_obj, log=None):
         if not isinstance(transition_message_obj, TransitionMessage):
             raise TypeError(
                 "`transition_message_obj' must be inst of TransitionMessage"
                 )
 
+        flags_list = transition_message_obj.flagged.get_flags_list()
+
+        for i in flags_list:
+
+            src_path = transition_message_obj.flagged.get_flag_path(i)
+            dst_path = self.flagged.get_flag_path(i)
+
+            size = os.stat(src_path).st_size
+            mb_size = size / 1024 / 1024
+
+            if log is not None:
+                log.info("Copying:")
+                log.info("    '{}'".format(src_path))
+                log.info("    to")
+                log.info("    '{}'".format(dst_path))
+                log.info("    size: {} bytes ({} MiB)".format(size, mb_size))
+
+            shutil.copy2(src_path, dst_path)
+
         return
-
-    def get_is_recent(self, session_id):
-        recent_flag_path = self.flagged.get_flag_path('recent')
-
-        if not self.flagged.get_is_flag_set('recent'):
-            y = yaml.dump({'session_id': session_id})
-            with open(recent_flag_path, 'w') as f:
-                f.write(y)
-
-            ret = True
-
-        else:
-
-            with open(recent_flag_path) as f:
-                ret = yaml.load(f.read())['session_id'] == session_id
-
-        return ret
 
     def get_is_exists(self):
         return os.path.isfile(self.path)
-
-    def get_is_locked(self):
-        return self.flagged.get_is_flag_set('lock')
-
-    def get_is_seen(self):
-        return
-
-    def wait_for_unlock(self, stop_event):
-        if not isinstance(stop_event, threading.Event):
-            raise TypeError("`stop_event' must be of type threading.Event")
-
-        while True:
-            if stop_event.is_set():
-                break
-
-            if not self.get_is_locked():
-                break
-
-            time.sleep(0.2)
-
-        return
-
-    def get_meta(self):
-        with open(self.flagged.meta_path) as f:
-            ret = yaml.load(f.read())
-        return ret
-
-    def set_meta(self, data):
-        with open(self.flagged.meta_path, 'w') as f:
-            f.write(yaml.dump(data))
-        return
-
-    def gen_meta(self):
-        """
-        generates .meta file for named message
-        """
-        data = collections.OrderedDict([
-            ('title', ''),
-            ('name', self.name),
-            ('creation_date', None),
-            ('seen?', ''),
-            ('sha512', ''),
-            # ('', ),
-            # ('attachments', ),
-            ])
-        self.set_meta(data)
-        return
-
-    def get_attachments(self):
-        return self.flagged.get_flag_data('attachments')
-
-    def set_attachments(self, data):
-        return self.flagged.set_flag_data('attachments', data)
 
 
 def check_message_meta_field_name(value):
@@ -1059,7 +1125,8 @@ class SpoolDirectory:
 
 
 class SpoolElement(
-        wayround_org.mail.server.directory_flag_methods.FlagMethods
+        wayround_org.mail.server.directory_flag_methods.FlagMethods,
+        LockableMailElement
         ):
 
     # WARNING!: do not make Message class a child of SpoolElement
@@ -1105,7 +1172,7 @@ class SpoolElement(
 
                 # bool
                 #
-                # 'data-ok' + QUIT command processed successfuly
+                # True if QUIT command processed successfuly
                 'quit-ok',
 
                 # int - message size proposed by client with 'MAIL FROM' cmd
@@ -1234,23 +1301,3 @@ class SpoolElement(
 
     def gen_path(self):
         return self.flagged.get_flag_path('data')
-
-    def __enter__(self):
-        self.acquire()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.release()
-        return
-
-    def lock(self):
-        return self._lock.acquire()
-
-    def unlock(self):
-        return self._lock.release()
-
-    def get_is_locked(self):
-        return self._lock.get_locked()
-
-    def get_is_exists(self):
-        return os.path.isfile(self.path)
