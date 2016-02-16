@@ -131,6 +131,9 @@ class SmtpSessionHandler:
 
             line = self.lbl_reader.nb_get_next_line(self._stop_event)
 
+            if line is None:
+                break
+
             if line == wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR:
                 self.session_logger.info("client closed connection")
                 break
@@ -222,6 +225,8 @@ class SmtpSessionHandler:
                         self.service.cfg.port
                         )
                     )
+
+        self.session_logger.info("command line loop exited")
 
         self.lbl_reader.stop()
 

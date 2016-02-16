@@ -6,6 +6,7 @@ import time
 import ssl
 
 import wayround_org.utils.socket
+import wayround_org.utils.datetime_rfc5322
 
 import wayround_org.sasl.sasl
 
@@ -36,32 +37,31 @@ class MailDirSelection:
         self.maildir = maildir
         return
 
-    def status_text(self):
+    def render_status_text(self):
+        """
+        result is bytes ready to send to port
+        """
 
-        response = b''
+        ret = wayround_org.mail.imap.format_mailbox_status_text(
+            self.get_flags(),
+            self.get_exists(),
+            self.get_recent(),
+            None,
+            None,
+            None,
+            None
+            )
 
-        response += self.get_flags_text()
-        response += wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+        return ret
 
-        response += self.get_exists_text()
-        response += wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+    def get_flags(self):
+        return self.maildir.find_set_flags()
 
-        response += self.get_recent_text()
-        response += wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+    def get_exists(self):
+        return len(self.maildir.get_message_list())
 
-        '''
-        response += self.get_flags_text()
-        response +=wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
-
-        response += self.get_flags_text()
-        response +=wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
-        '''
-
-        return
-
-    def get_exists_text(self):
-        count = len(self.maildir.get_message_list())
-        return
+    def get_recent(self):
+        return len(self.maildir.get_recent_message_list())
 
 
 class ImapSessionHandler:
@@ -115,7 +115,7 @@ class ImapSessionHandler:
         self.user_requested_auth = None
         self.user_obj = None
 
-        self.selected_dir = None
+        self.selected_mailbox = None
 
         return
 
@@ -132,7 +132,6 @@ class ImapSessionHandler:
         threading.Thread(target=self.stop).start()
 
         return
-
 
     def loop_enter(self):
 
@@ -176,6 +175,9 @@ class ImapSessionHandler:
 
             line = self.lbl_reader.nb_get_next_line(self._stop_event)
 
+            if line is None:
+                break
+
             if line == wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR:
                 self.session_logger.info("client closed connection")
                 break
@@ -207,7 +209,7 @@ class ImapSessionHandler:
                 cmd_method(
                     line_parsed_tag,
                     line_parsed_command,
-                    parsed_cmd_line['rest']
+                    parsed_cmd_line['parameters']
                     )
 
             else:
@@ -239,6 +241,8 @@ class ImapSessionHandler:
                         )
                     )
 
+        self.session_logger.info("command line loop exited")
+
         self.lbl_reader.stop()
 
         threading.Thread(target=self.stop).start()
@@ -257,7 +261,30 @@ class ImapSessionHandler:
         self._stopped_event.wait()
         return
 
-    def cmd_CAPABILITY(self, tag, cmd, rest):
+    def set_selection(self, mailbox):
+
+        if mailbox is not None and not isinstance(
+                mailbox,
+                (
+                    wayround_org.mail.server.directory.MailDir,
+                    MailDirSelection
+                    )
+                ):
+            raise TypeError(
+                "`mailbox' must be None or MailDir or MailDirSelection"
+                )
+
+        if isinstance(mailbox, wayround_org.mail.server.directory.MailDir):
+            mailbox = MailDirSelection(self, mailbox)
+
+        self.mailbox_selection = mailbox
+
+        return self.get_selection()
+
+    def get_selection(self):
+        return self.mailbox_selection
+
+    def cmd_CAPABILITY(self, tag, cmd, parameters_bytes):
 
         line_parsed_tag = tag
         line_parsed_command = cmd
@@ -297,14 +324,24 @@ class ImapSessionHandler:
 
         return
 
-    def cmd_AUTHENTICATE(self, tag, cmd, rest):
+    def cmd_AUTHENTICATE(self, tag, cmd, parameters_bytes):
 
         ret = 0
+
+        param_sum = wayround_org.mail.imap.parse_parameters_sumarized(
+            parameters_bytes
+            )
+
+        self.session_logger.info(
+            "client asked listing. params: {}".format(param_sum)
+            )
 
         line_parsed_tag = tag
         line_parsed_command = cmd
 
-        asked_method = rest[0].upper()
+        param0 = str(param_sum['strings'][0], 'utf-8')
+
+        asked_method = param0.upper()
 
         if asked_method != 'PLAIN':
             wayround_org.utils.socket.nb_sendall(
@@ -466,15 +503,20 @@ class ImapSessionHandler:
             step += 1
         return bad, no
 
-    def cmd_CREATE(self, tag, cmd, rest):
+    def cmd_CREATE(self, tag, cmd, parameters_bytes):
+
+        param_sum = wayround_org.mail.imap.parse_parameters_sumarized(
+            parameters_bytes
+            )
+
         self.session_logger.info(
-            "client asked dir creation. params: {}".format(
-                rest
-                )
+            "client asked listing. params: {}".format(param_sum)
             )
-        param0 = wayround_org.mail.imap.string_param_parse(
-            rest[0]
-            )
+
+        param0 = str(param_sum['strings'][0], 'utf-7')
+
+        print("param0: {}".format(param0))
+
         mdr = self.user_obj.get_maildir_root()
         maildir = mdr.get_dir(param0)
         if maildir.create():
@@ -497,41 +539,58 @@ class ImapSessionHandler:
                 )
         return
 
-    def cmd_SELECTt(self, tag, cmd, rest):
+    def cmd_SELECT(self, tag, cmd, parameters_bytes):
+
+        param_sum = wayround_org.mail.imap.parse_parameters_sumarized(
+            parameters_bytes
+            )
+
         self.session_logger.info(
-            "client asked dir selection. params: {}".format(
-                rest
-                )
+            "client asked listing. params: {}".format(param_sum)
             )
-        param0 = wayround_org.mail.imap.string_param_parse(
-            rest[0]
-            )
+
+        boxname = str(param_sum['strings'][0], 'utf-7')
+
         # MailDirSelection
         mdr = self.user_obj.get_maildir_root()
-        mdr.get_dir(param0)
-        return
+        mailbox = mdr.get_dir(boxname)
+        selection = self.set_selection(mailbox)
 
-    def cmd_LIST(self, tag, cmd, rest):
-        self.session_logger.info(
-            "client asked listing. params: {}".format(
-                rest
+        status_text = selection.render_status_text()
+
+        wayround_org.utils.socket.nb_sendall(
+            self.accepted_socket,
+            status_text
+            )
+
+        wayround_org.utils.socket.nb_sendall(
+            self.accepted_socket,
+            wayround_org.mail.imap.s2c_response_format(
+                tag,
+                'OK',
+                "SELECT Completed"
                 )
             )
+        return
 
-        reference_name = wayround_org.mail.imap.string_param_parse(
-            rest[0]
+    def cmd_LIST(self, tag, cmd, parameters_bytes):
+
+        param_sum = wayround_org.mail.imap.parse_parameters_sumarized(
+            parameters_bytes
             )
 
-        mailbox_name = wayround_org.mail.imap.string_param_parse(
-            rest[1]
+        self.session_logger.info(
+            "client asked listing. params: {}".format(param_sum)
             )
+
+        reference_name = str(param_sum['strings'][0], 'utf-7')
+
+        mailbox_name = str(param_sum['strings'][1], 'utf-7')
 
         mdr = self.user_obj.get_maildir_root()
         # TODO: security checks needed here
         d = mdr.get_dir(reference_name)
         res = d.glob(mailbox_name)
-
-        print("    res: {}".format(res))
 
         for i in res:
             result = (
@@ -555,6 +614,77 @@ class ImapSessionHandler:
                 tag,
                 'OK',
                 "LIST Completed"
+                )
+            )
+
+        return
+
+    def cmd_APPEND(self, tag, cmd, parameters_bytes):
+
+        param_sum = wayround_org.mail.imap.parse_parameters_sumarized(
+            parameters_bytes
+            )
+
+        self.session_logger.info(
+            "client asked listing. params: {}".format(param_sum)
+            )
+
+        mailbox = str(param_sum['strings'][0], 'utf-7')
+        date = None
+        if len(param_sum['strings']) > 1:
+            date = wayround_org.utils.datetime_rfc5322.str_to_datetime(
+                str(param_sum['strings'][1], 'utf-8')
+                )
+        flags = param_sum['flags']
+        size = param_sum['size']
+
+        mdr = self.user_obj.get_maildir_root()
+        mailbox_obj = mdr.get_dir('/' + mailbox)
+        msg = mailbox_obj.new_message()
+
+        wayround_org.utils.socket.nb_sendall(
+            self.accepted_socket,
+            b'+ Ready for literal data' +
+            wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+            )
+
+        bs = 500
+
+        int_size_bs = int(size / bs)
+
+        msg.init_data()
+
+        buf_size = 0
+
+        for i in range(int_size_bs):
+            if self._stop_event is not None and self._stop_event.is_set():
+                break
+            buf = self.lbl_reader.nb_get_next_bytes(
+                bs,
+                stop_event=self._stop_event
+                )
+            msg.append_data(buf)
+            buf_size += len(buf)
+            del buf
+
+        buf = self.lbl_reader.nb_get_next_bytes(
+            size - (bs * int_size_bs),
+            stop_event=self._stop_event
+            )
+        msg.append_data(buf)
+        buf_size += len(buf)
+        del buf
+
+        msg.reindex(self._stop_event, self.session_logger)
+        if flags is not None:
+            msg.set_flags_by_list(flags)
+
+        wayround_org.utils.socket.nb_sendall(
+            self.accepted_socket,
+            wayround_org.mail.imap.s2c_response_format(
+                tag,
+                'OK',
+                "APPEND Completed"
                 )
             )
 

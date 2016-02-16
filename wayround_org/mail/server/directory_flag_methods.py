@@ -82,7 +82,7 @@ def check_section_lines_structure(data):
     return ret
 
 
-class FlagMethods:
+class MessageFlagMethods:
 
     def __init__(self):
         self.flagged = None
@@ -92,6 +92,10 @@ class FlagMethods:
     def init_data(self):
         with self.flagged.open_flag('data', 'wb'):
             pass
+        return
+
+    def delete(self):
+        self.flagged.unset_all_flags()
         return
 
     def append_data(self, data):
@@ -120,13 +124,24 @@ class FlagMethods:
         self.flagged.set_bool('data-ok', value)
         return
 
+    def get_lines_indexes_cache(self):
+        # TODO: required check for consistance with file
+        if not hasattr(self, '_lines_indexes_cache'):
+            self._lines_indexes_cache = self.flagged.get_int_list('data-lines')
+        ret = self._lines_indexes_cache
+        return ret
+
     def get_data_lines_indexes(self, index=None, count=None):
-        return self.flagged.get_int_list('data-lines')[index:count]
+        lines_indexes_cache = self.get_lines_indexes_cache()
+        return lines_indexes_cache[index:count]
 
     def get_data_lines_index(self, index):
-        return self.flagged.get_int_list('data-lines')[index]
+        lines_indexes_cache = self.get_lines_indexes_cache()
+        return lines_indexes_cache[index]
 
     def set_data_lines_indexes(self, value):
+        if hasattr(self, '_lines_indexes_cache'):
+            del self._lines_indexes_cache
         self.flagged.set_int_list('data-lines', value)
         return
 
@@ -347,8 +362,82 @@ class FlagMethods:
 
         return ret
 
+    def get_subject(self):
+        return self.flagged.get_str('subject')
+
+    def set_subject(self, value):
+        self.flagged.set_str_n('subject', value)
+        return
+
     def get_attachments(self):
         return self.flagged.get_flag_data('attachments')
 
     def set_attachments(self, data):
         return self.flagged.set_flag_data('attachments', data)
+
+    def get_seen(self):
+        return self.flagged.get_bool('seen')
+
+    def get_answered(self):
+        return self.flagged.get_bool('answered')
+
+    def get_flagged(self):
+        return self.flagged.get_bool('flagged')
+
+    def get_deleted(self):
+        return self.flagged.get_bool('deleted')
+
+    def get_draft(self):
+        return self.flagged.get_bool('draft')
+
+    def get_recent(self):
+        return self.flagged.get_bool('recent')
+
+    def set_seen(self, value):
+        self.flagged.set_bool('seen', value)
+        return
+
+    def set_answered(self, value):
+        self.flagged.set_bool('answered', value)
+        return
+
+    def set_flagged(self, value):
+        self.flagged.set_bool('flagged', value)
+        return
+
+    def set_deleted(self, value):
+        self.flagged.set_bool('deleted', value)
+        return
+
+    def set_draft(self, value):
+        self.flagged.set_bool('draft', value)
+        return
+
+    def set_recent(self, value):
+        self.flagged.set_bool('recent', value)
+        return
+
+    def set_flags_by_list(self, lst):
+        self.set_seen('\\Seen' in lst)
+        self.set_answered('\\Answered' in lst)
+        self.set_flagged('\\Flagged' in lst)
+        self.set_deleted('\\Deleted' in lst)
+        self.set_draft('\\Draft' in lst)
+        self.set_recent('\\Recent' in lst)
+        return
+
+    def get_flags_list(self):
+        ret = []
+        if self.get_seen:
+            ret.append('\\Seen')
+        if self.get_answered:
+            ret.append('\\Answered')
+        if self.get_flagged:
+            ret.append('\\Flagged')
+        if self.get_deleted:
+            ret.append('\\Deleted')
+        if self.get_draft:
+            ret.append('\\Draft')
+        if self.get_recent:
+            ret.append('\\Recent')
+        return ret

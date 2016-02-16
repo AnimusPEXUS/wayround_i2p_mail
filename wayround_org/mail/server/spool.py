@@ -145,12 +145,19 @@ class SpoolWorker:
 
             tm = self.spool_dir.get_transition_message(element.get_name())
             tm.import_from_spool_element(element, logger)
+            logger.info("Setting up initial message flags..")
+            # NOTE: here supposed tobe creation of new message,
+            #       in distinction to such as APPEND command of IMAP
+            tm.setup_initial_flags(logger, None)
+            logger.info("    DONE")
 
             for i in local_recps:
                 mdr = i.get_maildir_root()
                 inbox = mdr.get_dir('/INBOX')
 
                 tm.gen_message(inbox, logger)
+
+            tm.delete()
 
             # TODO: add here routine for sending messages to other SMTP
             #       servers
