@@ -201,11 +201,11 @@ def parse_string_literal_param(
 
     if not isinstance(
             permanent_memory,
-            wayround_org.utils.pm.PermanentMemory
+            wayround_org.utils.pm.PersistentMemory
             ):
         raise TypeError(
             "`permanent_memory' must be inst of "
-            "wayround_org.utils.pm.PermanentMemory"
+            "wayround_org.utils.pm.PersistentMemory"
             )
 
     if not isinstance(parameters_bytes, bytes):

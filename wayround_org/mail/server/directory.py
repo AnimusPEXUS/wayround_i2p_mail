@@ -74,7 +74,7 @@ class RootDirectory:
         self._get_domain_lock = threading.Lock()
 
         self._permanent_memory = \
-            wayround_org.utils.pm.PermanentMemory.new_fs_memory(
+            wayround_org.utils.pm.PersistentMemory.new_fs_memory(
                 wayround_org.utils.path.join(
                     self.path,
                     'permanent_memory'
