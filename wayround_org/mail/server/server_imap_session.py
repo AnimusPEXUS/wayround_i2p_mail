@@ -7,6 +7,7 @@ import ssl
 
 import wayround_org.utils.socket
 import wayround_org.utils.datetime_rfc5322
+import wayround_org.utils.pm
 
 import wayround_org.sasl.sasl
 
@@ -116,6 +117,8 @@ class ImapSessionHandler:
         self.user_obj = None
 
         self.selected_mailbox = None
+
+        self.permanent_memory = self.directory.get_permanent_memory()
 
         return
 
@@ -646,7 +649,7 @@ class ImapSessionHandler:
             pv = param_sum['strings'][2]
             if not isinstance(
                     pv,
-                    wayround_org.utils.persistent_memory.PersistentVariable
+                    wayround_org.utils.pm.PersistentVariable
                     ):
                 raise Exception("TODO: here must be BAD error and normal exit")
 

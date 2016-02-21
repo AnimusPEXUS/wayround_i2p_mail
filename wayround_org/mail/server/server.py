@@ -189,6 +189,7 @@ class Server:
                 )
 
         self.directory.get_spool_directory().makedirs()
+        self.directory.get_permanent_memory().init()
 
         return
 

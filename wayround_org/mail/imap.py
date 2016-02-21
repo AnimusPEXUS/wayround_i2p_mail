@@ -177,7 +177,7 @@ def receive_string_literal(
             del buf
 
         if success:
-            buf = self.lbl_reader.nb_get_next_bytes(
+            buf = lbl_reader.nb_get_next_bytes(
                 size - (bs * int_size_bs),
                 stop_event=stop_event
                 )
@@ -237,7 +237,7 @@ def parse_string_literal_param(
 
     if res is True:
         ret = permanent_variable
-        cmd_line_continue = self.lbl_reader.nb_get_next_line(stop_event)
+        cmd_line_continue = lbl_reader.nb_get_next_line(stop_event)
 
     return ret, cmd_line_continue
 
