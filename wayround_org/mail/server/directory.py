@@ -16,6 +16,7 @@ import wayround_org.utils.log
 import wayround_org.utils.path
 import wayround_org.utils.threading
 import wayround_org.utils.time
+import wayround_org.utils.permanent_memory
 
 import wayround_org.mail.server.directory_flag_methods
 
@@ -72,7 +73,18 @@ class RootDirectory:
         self._get_domain_dict = weakref.WeakValueDictionary()
         self._get_domain_lock = threading.Lock()
 
+        self._permanent_memory = \
+            wayround_org.utils.permanent_memory.PermanentMemory.new_fs_memory(
+                wayround_org.utils.path.join(
+                    self.path,
+                    'permanent_memory'
+                    )
+                )
+
         return
+
+    def get_permanent_memory(self):
+        return self._permanent_memory
 
     def create_normal_logger(self, group=None, user=None):
         return wayround_org.utils.log.Log(

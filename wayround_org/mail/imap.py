@@ -136,22 +136,77 @@ def s2c_response_format(tag, code, comment=None):
     return ret
 
 
-def receive_string_literal(lbl_reader, c2s_mode=False):
-    return
+def receive_string_literal(
+        lbl_reader,
+        size,
+        permanent_variable,
+        sock,
+        is_server,
+        stop_event,
+        bs=512
+        ):
+
+    success = True
+
+    if is_server:
+        wayround_org.utils.socket.nb_sendall(
+            sock,
+            b'+ Ready for literal data' +
+            wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+            )
+
+    int_size_bs = int(size / bs)
+
+    with permanent_variable.open('bw') as pv:
+
+        buf_size = 0
+
+        for i in range(int_size_bs):
+            if stop_event is not None and stop_event.is_set():
+                success = False
+                break
+            buf = lbl_reader.nb_get_next_bytes(
+                bs,
+                stop_event=stop_event
+                )
+            if buf is None:
+                success = False
+                break
+            pv.write(buf)
+            buf_size += len(buf)
+            del buf
+
+        if success:
+            buf = self.lbl_reader.nb_get_next_bytes(
+                size - (bs * int_size_bs),
+                stop_event=stop_event
+                )
+            if buf is None:
+                success = False
+            else:
+                pv.write(buf)
+                buf_size += len(buf)
+
+    return success
 
 
-def parse_sized_string_param(parameters_bytes, stop_event):
-    """
-    NOTE: information on sized strings in IMAP documentation is pretty ghostly.
-          in particular, it's not clear: is one imap command line can contain
-          more than one such string parameter.
-          this imap implementation suggests there may be at most one such
-          parameter on IMAP cmd line.
+def parse_string_literal_param(
+        parameters_bytes,
+        lbl_reader,
+        permanent_memory,
+        sock,
+        is_server,
+        stop_event
+        ):
 
-    NOTE: this function does not read string literal sent by client or by
-          server. it reads only size value. for reading literal, use
-          receive_string_literal function
-    """
+    if not isinstance(
+            permanent_memory,
+            wayround_org.utils.permanent_memory.PermanentMemory
+            ):
+        raise TypeError(
+            "`permanent_memory' must be inst of "
+            "wayround_org.utils.permanent_memory.PermanentMemory"
+            )
 
     if not isinstance(parameters_bytes, bytes):
         raise ValueError("`parameters_bytes' must be bytes")
@@ -164,9 +219,27 @@ def parse_sized_string_param(parameters_bytes, stop_event):
     if closing_brace == -1 or closing_brace <= 1:
         raise ValueError("`parameters_bytes' size format is invalid")
 
-    ret = int(str(parameters_bytes[1:closing_brace], 'utf-8'))
+    size = int(str(parameters_bytes[1:closing_brace], 'utf-8'))
 
-    return ret, closing_brace + 1
+    permanent_variable = permanent_memory.new()
+
+    res = receive_string_literal(
+        lbl_reader,
+        size,
+        permanent_variable,
+        sock,
+        is_server,
+        stop_event
+        )
+
+    ret = None
+    cmd_line_continue = b''
+
+    if res is True:
+        ret = permanent_variable
+        cmd_line_continue = self.lbl_reader.nb_get_next_line(stop_event)
+
+    return ret, cmd_line_continue
 
 
 def _parse_string_param_find_closing_quote(parameters_bytes):
@@ -293,26 +366,52 @@ def parse_flags_param(parameters_bytes, stop_event):
     return ret, end_index
 
 
-def parse_parameters(parameters_bytes, stop_event=None):
+def is_cmd_line_end(parameters_bytes):
+    ret = False
+    if (parameters_bytes
+            == wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR):
+        ret = True
 
-    ret = []
+    if not ret:
+        if len(parameters_bytes) == 0:
+            ret = True
+    return ret
 
+
+def remove_left_spaces(parameters_bytes, stop_event):
     while True:
         if stop_event is not None and stop_event.is_set():
             break
 
-        while True:
-            if stop_event is not None and stop_event.is_set():
-                break
+        if is_cmd_line_end(parameters_bytes):
+            break
 
-            if len(parameters_bytes) == 0:
-                break
-            if parameters_bytes[0] == ord(b' '):
-                parameters_bytes = parameters_bytes[1:]
-            else:
-                break
+        if parameters_bytes[0] == ord(b' '):
+            parameters_bytes = parameters_bytes[1:]
+        else:
+            break
+    return parameters_bytes
 
-        if len(parameters_bytes) == 0:
+
+def parse_parameters(
+    parameters_bytes,
+    lbl_reader,
+    permanent_memory,
+    sock,
+    is_server,
+    stop_event=None
+        ):
+
+    ret = []
+
+    while True:
+
+        parameters_bytes = remove_left_spaces(parameters_bytes, stop_event)
+
+        if stop_event is not None and stop_event.is_set():
+            break
+
+        if is_cmd_line_end(parameters_bytes):
             break
 
         if parameters_bytes[0] == ord(b'('):
@@ -323,14 +422,20 @@ def parse_parameters(parameters_bytes, stop_event=None):
             ret.append(
                 {'type': 'flags', 'value': res}
                 )
+            parameters_bytes = parameters_bytes[start_index:]
         elif parameters_bytes[0] == ord(b'{'):
-            res, start_index = parse_sized_string_param(
+            res, parameters_bytes = parse_string_literal_param(
                 parameters_bytes,
-                stop_event=stop_event
+                lbl_reader,
+                permanent_memory,
+                sock,
+                is_server,
+                stop_event
                 )
             ret.append(
-                {'type': 'sized', 'value': res}
+                {'type': 'string_literal', 'value': res}
                 )
+
         else:
             res, start_index = parse_string_param(
                 parameters_bytes,
@@ -339,8 +444,7 @@ def parse_parameters(parameters_bytes, stop_event=None):
             ret.append(
                 {'type': 'string', 'value': res}
                 )
-
-        parameters_bytes = parameters_bytes[start_index:]
+            parameters_bytes = parameters_bytes[start_index:]
 
     return ret
 
@@ -354,15 +458,12 @@ def sumarize_parsed_parameters(list_of_dicts):
     for i in list_of_dicts:
         if i['type'] == 'flags':
             flags = i['value']
-        elif i['type'] == 'sized':
-            size = i['value']
-        elif i['type'] == 'string':
+        elif i['type'] in ['string', 'string_literal']:
             strings.append(i['value'])
         else:
             raise ValueError("invalid i['type']: {}".format(i['type']))
 
     ret = {
-        'size': size,
         'flags': flags,
         'strings': strings
         }
@@ -370,11 +471,25 @@ def sumarize_parsed_parameters(list_of_dicts):
     return ret
 
 
-def parse_parameters_sumarized(parameters_bytes, stop_event=None):
+def parse_parameters_sumarized(
+        parameters_bytes,
+        lbl_reader,
+        permanent_memory,
+        sock,
+        is_server,
+        stop_event=None
+        ):
     """
     c2s - set to true if client to server mode required.
     """
-    list_of_dicts = parse_parameters(parameters_bytes, stop_event=stop_event)
+    list_of_dicts = parse_parameters(
+        parameters_bytes,
+        lbl_reader,
+        permanent_memory,
+        sock,
+        is_server,
+        stop_event=stop_event
+        )
     ret = sumarize_parsed_parameters(list_of_dicts)
     return ret
 
@@ -490,10 +605,7 @@ def c2s_search_parameters_parse(parameters_bytes, stop_event):
             cmd = str(cmd, 'utf-8').upper()
 
             if not cmd in IMAP_SEARCH_KEYS:
-                 error_bad=True
-                 break
-            
-            
-            
+                error_bad = True
+                break
 
     return ret

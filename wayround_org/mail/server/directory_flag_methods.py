@@ -107,6 +107,13 @@ class MessageFlagMethods:
                 f.write(data)
         return
 
+    def import_data_from_permanent_variable(self, pv, stop_event=None):
+        ret = self.flagged.write_flag_from_permanent_variable(
+            pv,
+            stop_event=stop_event
+            )
+        return ret
+
     def get_data(self, offset=None, size=None):
         with open(self.path, 'rb') as f:
             f.seek(offset)

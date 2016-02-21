@@ -284,6 +284,21 @@ class ImapSessionHandler:
     def get_selection(self):
         return self.mailbox_selection
 
+    def call_parse_parameters_sumarized(self, parameters_bytes):
+        """
+        this is shortcut for parse_parameters_sumarized, as it requires same
+        objects each time, so to not bother with too many parameters
+        """
+        ret = wayround_org.mail.imap.parse_parameters_sumarized(
+            parameters_bytes,
+            self.lbl_reader,
+            self.permanent_memory,
+            self.accepted_socket,
+            is_server=True,
+            stop_event=self._stop_event
+            )
+        return ret
+
     def cmd_CAPABILITY(self, tag, cmd, parameters_bytes):
 
         line_parsed_tag = tag
@@ -328,9 +343,7 @@ class ImapSessionHandler:
 
         ret = 0
 
-        param_sum = wayround_org.mail.imap.parse_parameters_sumarized(
-            parameters_bytes
-            )
+        param_sum = self.call_parse_parameters_sumarized(parameters_bytes)
 
         self.session_logger.info(
             "client asked listing. params: {}".format(param_sum)
@@ -505,9 +518,7 @@ class ImapSessionHandler:
 
     def cmd_CREATE(self, tag, cmd, parameters_bytes):
 
-        param_sum = wayround_org.mail.imap.parse_parameters_sumarized(
-            parameters_bytes
-            )
+        param_sum = self.call_parse_parameters_sumarized(parameters_bytes)
 
         self.session_logger.info(
             "client asked listing. params: {}".format(param_sum)
@@ -541,9 +552,7 @@ class ImapSessionHandler:
 
     def cmd_SELECT(self, tag, cmd, parameters_bytes):
 
-        param_sum = wayround_org.mail.imap.parse_parameters_sumarized(
-            parameters_bytes
-            )
+        param_sum = self.call_parse_parameters_sumarized(parameters_bytes)
 
         self.session_logger.info(
             "client asked listing. params: {}".format(param_sum)
@@ -575,9 +584,7 @@ class ImapSessionHandler:
 
     def cmd_LIST(self, tag, cmd, parameters_bytes):
 
-        param_sum = wayround_org.mail.imap.parse_parameters_sumarized(
-            parameters_bytes
-            )
+        param_sum = self.call_parse_parameters_sumarized(parameters_bytes)
 
         self.session_logger.info(
             "client asked listing. params: {}".format(param_sum)
@@ -621,12 +628,10 @@ class ImapSessionHandler:
 
     def cmd_APPEND(self, tag, cmd, parameters_bytes):
 
-        param_sum = wayround_org.mail.imap.parse_parameters_sumarized(
-            parameters_bytes
-            )
+        param_sum = self.call_parse_parameters_sumarized(parameters_bytes)
 
         self.session_logger.info(
-            "client asked listing. params: {}".format(param_sum)
+            "client asked append. params: {}".format(param_sum)
             )
 
         mailbox = str(param_sum['strings'][0], 'utf-7')
@@ -635,45 +640,23 @@ class ImapSessionHandler:
             date = wayround_org.utils.datetime_rfc5322.str_to_datetime(
                 str(param_sum['strings'][1], 'utf-8')
                 )
+
+        pv = None
+        if len(param_sum['strings']) > 2:
+            pv = param_sum['strings'][2]
+            if not isinstance(
+                    pv,
+                    wayround_org.utils.persistent_memory.PersistentVariable
+                    ):
+                raise Exception("TODO: here must be BAD error and normal exit")
+
         flags = param_sum['flags']
-        size = param_sum['size']
 
         mdr = self.user_obj.get_maildir_root()
         mailbox_obj = mdr.get_dir('/' + mailbox)
         msg = mailbox_obj.new_message()
 
-        wayround_org.utils.socket.nb_sendall(
-            self.accepted_socket,
-            b'+ Ready for literal data' +
-            wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
-            )
-
-        bs = 500
-
-        int_size_bs = int(size / bs)
-
-        msg.init_data()
-
-        buf_size = 0
-
-        for i in range(int_size_bs):
-            if self._stop_event is not None and self._stop_event.is_set():
-                break
-            buf = self.lbl_reader.nb_get_next_bytes(
-                bs,
-                stop_event=self._stop_event
-                )
-            msg.append_data(buf)
-            buf_size += len(buf)
-            del buf
-
-        buf = self.lbl_reader.nb_get_next_bytes(
-            size - (bs * int_size_bs),
-            stop_event=self._stop_event
-            )
-        msg.append_data(buf)
-        buf_size += len(buf)
-        del buf
+        msg.import_data_from_permanent_variable()
 
         msg.reindex(self._stop_event, self.session_logger)
         if flags is not None:
