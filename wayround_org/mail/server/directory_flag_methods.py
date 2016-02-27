@@ -107,8 +107,9 @@ class MessageFlagMethods:
                 f.write(data)
         return
 
-    def import_data_from_permanent_variable(self, pv, stop_event=None):
-        ret = self.flagged.write_flag_from_permanent_variable(
+    def import_data_from_persistent_variable(self, pv, stop_event=None):
+        ret = self.flagged.write_flag_from_persistent_variable(
+            'data',
             pv,
             stop_event=stop_event
             )

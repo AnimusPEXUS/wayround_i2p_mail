@@ -659,7 +659,7 @@ class ImapSessionHandler:
         mailbox_obj = mdr.get_dir('/' + mailbox)
         msg = mailbox_obj.new_message()
 
-        msg.import_data_from_permanent_variable()
+        msg.import_data_from_persistent_variable(pv)
 
         msg.reindex(self._stop_event, self.session_logger)
         if flags is not None:

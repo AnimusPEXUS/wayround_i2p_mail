@@ -10,44 +10,6 @@ import wayround_org.mail.miscs
 #    r'^(?P<tag>.*?) (?P<command>.*?)( (?P<rest>.*))?$'
 #    )
 
-IMAP_SEARCH_KEYS = {
-    'ALL': [],
-    'ANSWERED': [],
-    'BCC': ['string'],
-    'BEFORE': ['date'],
-    'BODY': ['string'],
-    'CC': ['string'],
-    'DELETED': [],
-    'DRAFT': [],
-    'FLAGGED': [],
-    'FROM': ['string'],
-    'HEADER': ['field-name', 'string'],
-    'KEYWORD': ['flag'],
-    'LARGER': ['n'],
-    'NEW': [],
-    'NOT': ['search-key'],
-    'OLD': [],
-    'ON': ['date'],
-    'OR': ['search-key1', 'search-key2'],
-    'RECENT': [],
-    'SEEN': [],
-    'SENTBEFORE': ['date'],
-    'SENTON': ['date'],
-    'SENTSINCE': ['date'],
-    'SINCE': ['date'],
-    'SMALLER': ['n'],
-    'SUBJECT': ['string'],
-    'TEXT': ['string'],
-    'TO': ['string'],
-    'UID': ['sequence set'],
-    'UNANSWERED': [],
-    'UNDELETED': [],
-    'UNDRAFT': [],
-    'UNFLAGGED': [],
-    'UNKEYWORD': ['flag'],
-    'UNSEEN': []
-    }
-
 
 def c2s_command_line_parse(data):
     """
@@ -167,7 +129,8 @@ def receive_string_literal(
                 break
             buf = lbl_reader.nb_get_next_bytes(
                 bs,
-                stop_event=stop_event
+                stop_event=stop_event,
+                delete_readen_data=True
                 )
             if buf is None:
                 success = False
@@ -179,7 +142,8 @@ def receive_string_literal(
         if success:
             buf = lbl_reader.nb_get_next_bytes(
                 size - (bs * int_size_bs),
-                stop_event=stop_event
+                stop_event=stop_event,
+                delete_readen_data=True
                 )
             if buf is None:
                 success = False
@@ -309,7 +273,15 @@ def parse_string_param(parameters_bytes, stop_event):
 
     else:
 
-        quote_index = parameters_bytes.find(b' ')
+        re_res = re.search(rb'(\s|[\(\)\{\}\%\*\\\"\]])', parameters_bytes)
+
+        quote_index = -1
+        if re_res is not None:
+            quote_index = re_res.pos
+
+        del re_res
+
+        quote_index =
 
         if quote_index == -1:
             ret = parameters_bytes
