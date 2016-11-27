@@ -1,5 +1,5 @@
 
-import wayround_org.utils.uri
+import wayround_i2p.utils.uri
 
 STANDARD_LINE_TERMINATOR = b'\r\n'
 STANDARD_LINE_TERMINATOR_LEN = len(STANDARD_LINE_TERMINATOR)
@@ -73,14 +73,14 @@ class Address:
     @authority.setter
     def authority(self, value):
         if isinstance(value, str):
-            value = wayround_org.utils.uri.AuthorityLikeHttp.new_from_string(
+            value = wayround_i2p.utils.uri.AuthorityLikeHttp.new_from_string(
                 value
                 )
 
-        if not isinstance(value, wayround_org.utils.uri.AuthorityLikeHttp):
+        if not isinstance(value, wayround_i2p.utils.uri.AuthorityLikeHttp):
             raise TypeError(
                 "`authority' must be str or inst of "
-                "wayround_org.utils.uri.AuthorityLikeHttp"
+                "wayround_i2p.utils.uri.AuthorityLikeHttp"
                 )
 
         self._authority = value

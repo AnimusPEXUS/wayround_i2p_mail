@@ -1,7 +1,7 @@
 
 import datetime
 
-import wayround_org.utils.types
+import wayround_i2p.utils.types
 
 
 TO_ERRORS_STRUCTURE = {
@@ -33,7 +33,7 @@ def check_to_errors_structure(data):
     ret = True
 
     if ret:
-        if not wayround_org.utils.types.struct_check(
+        if not wayround_i2p.utils.types.struct_check(
                 data,
                 TO_ERRORS_STRUCTURE
                 ):
@@ -62,7 +62,7 @@ def check_section_lines_structure(data):
     if ret:
         for i in ['header', 'body']:
             if i in data:
-                if not wayround_org.utils.types.struct_check(
+                if not wayround_i2p.utils.types.struct_check(
                         data[i],
                         SECTION_LINES_SUB01_STRUCTURE
                         ):
@@ -72,7 +72,7 @@ def check_section_lines_structure(data):
     if ret:
         if 'others' in data:
             for i in data['others']:
-                if not wayround_org.utils.types.struct_check(
+                if not wayround_i2p.utils.types.struct_check(
                         i,
                         SECTION_LINES_SUB01_STRUCTURE
                         ):

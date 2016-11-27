@@ -4,7 +4,7 @@ IMAP SEARCH command has complex structure and parsing context requirements
 so it's functionality separated into own module
 """
 
-import wayround_org.mail.imap
+import wayround_i2p.mail.imap
 
 
 IMAP_SEARCH_KEYS = {
@@ -73,10 +73,10 @@ def parse_search_cmdline_bytes(
         if stop_event is not None and stop_event.is_set():
             break
 
-        if wayround_org.mail.imap.is_cmd_line_end(parameters_bytes):
+        if wayround_i2p.mail.imap.is_cmd_line_end(parameters_bytes):
             break
 
-        parameters_bytes = wayround_org.mail.imap.remove_left_spaces(
+        parameters_bytes = wayround_i2p.mail.imap.remove_left_spaces(
             parameters_bytes,
             stop_event
             )
@@ -91,7 +91,7 @@ def parse_search_cmdline_bytes(
                 stop_event
                 )
         else:
-            key, start_index = wayround_org.mail.imap.parse_string_param(
+            key, start_index = wayround_i2p.mail.imap.parse_string_param(
                 parameters_bytes,
                 stop_event=stop_event
                 )
@@ -113,7 +113,7 @@ def parse_search_cmdline_bytes(
                 if i == 'string':
                     if parameters_bytes[0] == ord(b'{'):
                         res, parameters_bytes = \
-                            wayround_org.mail.imap.parse_string_literal_param(
+                            wayround_i2p.mail.imap.parse_string_literal_param(
                                 parameters_bytes,
                                 lbl_reader,
                                 permanent_memory,
@@ -126,7 +126,7 @@ def parse_search_cmdline_bytes(
 
                     else:
                         res, start_index = \
-                            wayround_org.mail.imap.parse_string_param(
+                            wayround_i2p.mail.imap.parse_string_param(
                                 parameters_bytes,
                                 stop_event=stop_event
                                 )

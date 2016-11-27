@@ -1,24 +1,24 @@
 
 
 """
-The main difference between this module and wayround_org.http.message
+The main difference between this module and wayround_i2p.http.message
 is what http is a streaming protocol, unlike e-mail, which is
 message oriented.
 """
 
 
-import wayround_org.http.message
+import wayround_i2p.http.message
 
-import wayround_org.mail.miscs
+import wayround_i2p.mail.miscs
 
 
-MAX_LINE_LENGTH = wayround_org.mail.miscs.MAX_LINE_LENGTH
-RECOMMENDED_LINE_WRAP_LENGTH = wayround_org.mail.miscs.RECOMMENDED_LINE_WRAP_LENGTH
+MAX_LINE_LENGTH = wayround_i2p.mail.miscs.MAX_LINE_LENGTH
+RECOMMENDED_LINE_WRAP_LENGTH = wayround_i2p.mail.miscs.RECOMMENDED_LINE_WRAP_LENGTH
 
-STANDARD_FIELDS = wayround_org.mail.miscs.STANDARD_FIELDS
-FIELD_MINIMUM_COUNT_ONE = wayround_org.mail.miscs.FIELD_MINIMUM_COUNT_ONE
-FIELD_MAXIMUM_COUNT_ONE = wayround_org.mail.miscs.FIELD_MAXIMUM_COUNT_ONE
-STANDARD_LINE_TERMINATOR=wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+STANDARD_FIELDS = wayround_i2p.mail.miscs.STANDARD_FIELDS
+FIELD_MINIMUM_COUNT_ONE = wayround_i2p.mail.miscs.FIELD_MINIMUM_COUNT_ONE
+FIELD_MAXIMUM_COUNT_ONE = wayround_i2p.mail.miscs.FIELD_MAXIMUM_COUNT_ONE
+STANDARD_LINE_TERMINATOR=wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR
 
 
 class MessageTooLongLines(Exception):
@@ -97,7 +97,7 @@ def parse_message_source_text(
 
     header_fields = []
 
-    lines = wayround_org.http.message.split_lines(text, line_separator)
+    lines = wayround_i2p.http.message.split_lines(text, line_separator)
     lines_l = len(lines)
 
     for i in range(lines_l):
@@ -180,7 +180,7 @@ def render_message_source_text(
 
 
 def determine_line_separator(text):
-    return wayround_org.http.message.determine_line_terminator(text)
+    return wayround_i2p.http.message.determine_line_terminator(text)
 
 
 def determine_line_separator_in_stream(stream):

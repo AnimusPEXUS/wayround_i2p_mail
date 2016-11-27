@@ -35,10 +35,10 @@ def commands():
 
 def server_run(command_name, opts, args, adds):
 
-    import wayround_org.mail.server.server
+    import wayround_i2p.mail.server.server
 
     ret = 0
-    serv = wayround_org.mail.server.server.Server(
+    serv = wayround_i2p.mail.server.server.Server(
         #'/etc/wrows.conf'
         '/home/agu/tmp/test_mail_dir'
         )
@@ -49,9 +49,9 @@ def server_run(command_name, opts, args, adds):
 
 def _load_directory():
 
-    import wayround_org.mail.server.directory
+    import wayround_i2p.mail.server.directory
 
-    ret = wayround_org.mail.server.directory.RootDirectory(
+    ret = wayround_i2p.mail.server.directory.RootDirectory(
         '/home/agu/tmp/test_mail_dir'
         )
 
@@ -59,12 +59,12 @@ def _load_directory():
 
 
 def print_output_list_items(lst):
-    import wayround_org.utils.text
+    import wayround_i2p.utils.text
     txt = "[{} item(s)]".format(len(lst))
     line = '-' * len(txt)
     print(txt)
     print(line)
-    print(wayround_org.utils.text.return_columned_list(lst), end='')
+    print(wayround_i2p.utils.text.return_columned_list(lst), end='')
     print(line)
     print(txt)
     return

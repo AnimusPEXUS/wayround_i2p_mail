@@ -5,16 +5,16 @@ import threading
 import time
 import ssl
 
-import wayround_org.utils.socket
-import wayround_org.utils.datetime_rfc5322
-import wayround_org.utils.pm
+import wayround_i2p.utils.socket
+import wayround_i2p.utils.datetime_rfc5322
+import wayround_i2p.utils.pm
 
-import wayround_org.sasl.sasl
+import wayround_i2p.sasl.sasl
 
-import wayround_org.mail.miscs
-import wayround_org.mail.server.directory
-import wayround_org.mail.server.server
-import wayround_org.mail.imap
+import wayround_i2p.mail.miscs
+import wayround_i2p.mail.server.directory
+import wayround_i2p.mail.server.server
+import wayround_i2p.mail.imap
 
 
 class MailDirSelection:
@@ -27,11 +27,11 @@ class MailDirSelection:
 
         if not isinstance(
                 maildir,
-                wayround_org.mail.server.directory.MailDir
+                wayround_i2p.mail.server.directory.MailDir
                 ):
             raise TypeError(
                 "`maildir' must be inst of "
-                "wayround_org.mail.server.directory.MailDir"
+                "wayround_i2p.mail.server.directory.MailDir"
                 )
 
         self.imap_session_handler = imap_session_handler
@@ -43,7 +43,7 @@ class MailDirSelection:
         result is bytes ready to send to port
         """
 
-        ret = wayround_org.mail.imap.format_mailbox_status_text(
+        ret = wayround_i2p.mail.imap.format_mailbox_status_text(
             self.get_flags(),
             self.get_exists(),
             self.get_recent(),
@@ -80,10 +80,10 @@ class ImapSessionHandler:
             session_logger
             ):
 
-        if not isinstance(server, wayround_org.mail.server.server.Server):
+        if not isinstance(server, wayround_i2p.mail.server.server.Server):
             raise TypeError(
                 "`server' must be of type "
-                "wayround_org.mail.server.server.Server"
+                "wayround_i2p.mail.server.server.Server"
                 )
 
         # server connection
@@ -140,7 +140,7 @@ class ImapSessionHandler:
 
         threading.Thread(target=self._server_stop_watcher).start()
 
-        wayround_org.utils.socket.nb_handshake(self.accepted_socket)
+        wayround_i2p.utils.socket.nb_handshake(self.accepted_socket)
 
         self.session_logger.info("Certificate info")
         self.session_logger.info("    base:")
@@ -156,17 +156,17 @@ class ImapSessionHandler:
         else:
             self.session_logger.info("        none")
 
-        self.lbl_reader = wayround_org.utils.socket.LblRecvReaderBuffer(
+        self.lbl_reader = wayround_i2p.utils.socket.LblRecvReaderBuffer(
             self.accepted_socket,
             # recv_size=4096,
-            line_terminator=wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+            line_terminator=wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR
             )
         self.lbl_reader.start()
 
-        wayround_org.utils.socket.nb_sendall(
+        wayround_i2p.utils.socket.nb_sendall(
             self.accepted_socket,
             b'* OK IMAP4rev1 Service Ready'
-            + wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+            + wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR
             )
 
         while True:
@@ -181,7 +181,7 @@ class ImapSessionHandler:
             if line is None:
                 break
 
-            if line == wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR:
+            if line == wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR:
                 self.session_logger.info("client closed connection")
                 break
 
@@ -190,7 +190,7 @@ class ImapSessionHandler:
 
             self.session_logger.info("got line from client: {}".format(line))
 
-            parsed_cmd_line = wayround_org.mail.imap.c2s_command_line_parse(
+            parsed_cmd_line = wayround_i2p.mail.imap.c2s_command_line_parse(
                 line
                 )
             self.session_logger.info("parsed line: {}".format(parsed_cmd_line))
@@ -217,9 +217,9 @@ class ImapSessionHandler:
 
             else:
 
-                wayround_org.utils.socket.nb_sendall(
+                wayround_i2p.utils.socket.nb_sendall(
                     self.accepted_socket,
-                    wayround_org.mail.imap.s2c_response_format(
+                    wayround_i2p.mail.imap.s2c_response_format(
                         line_parsed_tag,
                         'BAD',
                         line_parsed_command
@@ -269,7 +269,7 @@ class ImapSessionHandler:
         if mailbox is not None and not isinstance(
                 mailbox,
                 (
-                    wayround_org.mail.server.directory.MailDir,
+                    wayround_i2p.mail.server.directory.MailDir,
                     MailDirSelection
                     )
                 ):
@@ -277,7 +277,7 @@ class ImapSessionHandler:
                 "`mailbox' must be None or MailDir or MailDirSelection"
                 )
 
-        if isinstance(mailbox, wayround_org.mail.server.directory.MailDir):
+        if isinstance(mailbox, wayround_i2p.mail.server.directory.MailDir):
             mailbox = MailDirSelection(self, mailbox)
 
         self.mailbox_selection = mailbox
@@ -292,7 +292,7 @@ class ImapSessionHandler:
         this is shortcut for parse_parameters_sumarized, as it requires same
         objects each time, so to not bother with too many parameters
         """
-        ret = wayround_org.mail.imap.parse_parameters_sumarized(
+        ret = wayround_i2p.mail.imap.parse_parameters_sumarized(
             parameters_bytes,
             self.lbl_reader,
             self.permanent_memory,
@@ -327,15 +327,15 @@ class ImapSessionHandler:
         response += bytes(
             '* {}'.format(' '.join(caps)),
             'utf-8'
-            ) + wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+            ) + wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR
 
-        response += wayround_org.mail.imap.s2c_response_format(
+        response += wayround_i2p.mail.imap.s2c_response_format(
             line_parsed_tag,
             'OK',
             line_parsed_command + ' completed'
             )
 
-        wayround_org.utils.socket.nb_sendall(
+        wayround_i2p.utils.socket.nb_sendall(
             self.accepted_socket,
             response
             )
@@ -360,9 +360,9 @@ class ImapSessionHandler:
         asked_method = param0.upper()
 
         if asked_method != 'PLAIN':
-            wayround_org.utils.socket.nb_sendall(
+            wayround_i2p.utils.socket.nb_sendall(
                 self.accepted_socket,
-                wayround_org.mail.imap.s2c_response_format(
+                wayround_i2p.mail.imap.s2c_response_format(
                     line_parsed_tag,
                     'BAD',
                     line_parsed_command
@@ -375,7 +375,7 @@ class ImapSessionHandler:
             bad = False
             no = False
 
-            sasl_session = wayround_org.sasl.sasl.init_mech('PLAIN', 'server')
+            sasl_session = wayround_i2p.sasl.sasl.init_mech('PLAIN', 'server')
 
             bad, no = self.server_authenticate(sasl_session, line_parsed_tag)
 
@@ -391,9 +391,9 @@ class ImapSessionHandler:
 
             if bad:
 
-                wayround_org.utils.socket.nb_sendall(
+                wayround_i2p.utils.socket.nb_sendall(
                     self.accepted_socket,
-                    wayround_org.mail.imap.s2c_response_format(
+                    wayround_i2p.mail.imap.s2c_response_format(
                         line_parsed_tag,
                         'BAD',
                         line_parsed_command
@@ -403,9 +403,9 @@ class ImapSessionHandler:
 
             if no:
 
-                wayround_org.utils.socket.nb_sendall(
+                wayround_i2p.utils.socket.nb_sendall(
                     self.accepted_socket,
-                    wayround_org.mail.imap.s2c_response_format(
+                    wayround_i2p.mail.imap.s2c_response_format(
                         line_parsed_tag,
                         'NO',
                         line_parsed_command
@@ -436,9 +436,9 @@ class ImapSessionHandler:
                     sasl_session_authcid
                     )
 
-                wayround_org.utils.socket.nb_sendall(
+                wayround_i2p.utils.socket.nb_sendall(
                     self.accepted_socket,
-                    wayround_org.mail.imap.s2c_response_format(
+                    wayround_i2p.mail.imap.s2c_response_format(
                         line_parsed_tag,
                         'OK',
                         "authentication succeeded"
@@ -447,9 +447,9 @@ class ImapSessionHandler:
 
             elif auth_user_res == False:
 
-                wayround_org.utils.socket.nb_sendall(
+                wayround_i2p.utils.socket.nb_sendall(
                     self.accepted_socket,
-                    wayround_org.mail.imap.s2c_response_format(
+                    wayround_i2p.mail.imap.s2c_response_format(
                         line_parsed_tag,
                         'NO',
                         "authentication faliled"
@@ -485,9 +485,9 @@ class ImapSessionHandler:
                         'utf-8'
                         )
 
-                request += wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+                request += wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR
 
-                wayround_org.utils.socket.nb_sendall(
+                wayround_i2p.utils.socket.nb_sendall(
                     self.accepted_socket,
                     request
                     )
@@ -496,14 +496,14 @@ class ImapSessionHandler:
                     self._stop_event
                     )
 
-                if (buf == wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR):
+                if (buf == wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR):
                     self.session_logger.error(
                         'connection closed by client unexpectedly'
                         )
                     break
 
                 elif (buf == b'*'
-                      + wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR):
+                      + wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR):
                     self.session_logger.error(
                         'client wished to cancel authentication'
                         )
@@ -534,18 +534,18 @@ class ImapSessionHandler:
         mdr = self.user_obj.get_maildir_root()
         maildir = mdr.get_dir(param0)
         if maildir.create():
-            wayround_org.utils.socket.nb_sendall(
+            wayround_i2p.utils.socket.nb_sendall(
                 self.accepted_socket,
-                wayround_org.mail.imap.s2c_response_format(
+                wayround_i2p.mail.imap.s2c_response_format(
                     tag,
                     'OK',
                     "create completed"
                     )
                 )
         else:
-            wayround_org.utils.socket.nb_sendall(
+            wayround_i2p.utils.socket.nb_sendall(
                 self.accepted_socket,
-                wayround_org.mail.imap.s2c_response_format(
+                wayround_i2p.mail.imap.s2c_response_format(
                     tag,
                     'NO',
                     "create failure: can't create mailbox with that name"
@@ -570,14 +570,14 @@ class ImapSessionHandler:
 
         status_text = selection.render_status_text()
 
-        wayround_org.utils.socket.nb_sendall(
+        wayround_i2p.utils.socket.nb_sendall(
             self.accepted_socket,
             status_text
             )
 
-        wayround_org.utils.socket.nb_sendall(
+        wayround_i2p.utils.socket.nb_sendall(
             self.accepted_socket,
-            wayround_org.mail.imap.s2c_response_format(
+            wayround_i2p.mail.imap.s2c_response_format(
                 tag,
                 'OK',
                 "SELECT Completed"
@@ -610,17 +610,17 @@ class ImapSessionHandler:
                 b'"' +
                 i.encode('utf-7') +
                 b'"' +
-                wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+                wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR
                 )
 
-            wayround_org.utils.socket.nb_sendall(
+            wayround_i2p.utils.socket.nb_sendall(
                 self.accepted_socket,
                 result
                 )
 
-        wayround_org.utils.socket.nb_sendall(
+        wayround_i2p.utils.socket.nb_sendall(
             self.accepted_socket,
-            wayround_org.mail.imap.s2c_response_format(
+            wayround_i2p.mail.imap.s2c_response_format(
                 tag,
                 'OK',
                 "LIST Completed"
@@ -640,7 +640,7 @@ class ImapSessionHandler:
         mailbox = str(param_sum['strings'][0], 'utf-7')
         date = None
         if len(param_sum['strings']) > 1:
-            date = wayround_org.utils.datetime_rfc5322.str_to_datetime(
+            date = wayround_i2p.utils.datetime_rfc5322.str_to_datetime(
                 str(param_sum['strings'][1], 'utf-8')
                 )
 
@@ -649,7 +649,7 @@ class ImapSessionHandler:
             pv = param_sum['strings'][2]
             if not isinstance(
                     pv,
-                    wayround_org.utils.pm.PersistentVariable
+                    wayround_i2p.utils.pm.PersistentVariable
                     ):
                 raise Exception("TODO: here must be BAD error and normal exit")
 
@@ -665,9 +665,9 @@ class ImapSessionHandler:
         if flags is not None:
             msg.set_flags_by_list(flags)
 
-        wayround_org.utils.socket.nb_sendall(
+        wayround_i2p.utils.socket.nb_sendall(
             self.accepted_socket,
-            wayround_org.mail.imap.s2c_response_format(
+            wayround_i2p.mail.imap.s2c_response_format(
                 tag,
                 'OK',
                 "APPEND Completed"

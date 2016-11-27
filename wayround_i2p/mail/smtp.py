@@ -1,5 +1,5 @@
 
-import wayround_org.mail.miscs
+import wayround_i2p.mail.miscs
 
 
 AUTHLESS_COMMANDS = ['AUTH', 'EHLO', 'HELO', 'NOOP', 'RSET', 'QUIT']
@@ -10,10 +10,10 @@ def c2s_command_line_parse(data):
     if not isinstance(data, bytes):
         raise TypeError("`data' type must be bytes")
 
-    if not data.endswith(wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR):
+    if not data.endswith(wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR):
         raise TypeError(
             "`data' must be termenated with `{}'".format(
-                wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+                wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR
                 )
             )
 
@@ -62,6 +62,6 @@ def s2c_response_format(code, finishing, text):
     if text is not None:
         ret += bytes(text, 'utf-8')
 
-    ret += wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+    ret += wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR
 
     return ret

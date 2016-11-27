@@ -5,21 +5,21 @@ import threading
 import socket
 import ssl
 
-import wayround_org.utils.path
-import wayround_org.utils.osutils
-import wayround_org.utils.socket
+import wayround_i2p.utils.path
+import wayround_i2p.utils.osutils
+import wayround_i2p.utils.socket
 
-import wayround_org.socketserver.service
+import wayround_i2p.socketserver.service
 
-import wayround_org.mail.imap
-import wayround_org.mail.miscs
-import wayround_org.mail.server.config
-import wayround_org.mail.server.directory
-import wayround_org.mail.server.server_imap_session
-import wayround_org.mail.server.server_smtp_session
-import wayround_org.mail.server.socket
-import wayround_org.mail.server.spool
-import wayround_org.mail.smtp
+import wayround_i2p.mail.imap
+import wayround_i2p.mail.miscs
+import wayround_i2p.mail.server.config
+import wayround_i2p.mail.server.directory
+import wayround_i2p.mail.server.server_imap_session
+import wayround_i2p.mail.server.server_smtp_session
+import wayround_i2p.mail.server.socket
+import wayround_i2p.mail.server.spool
+import wayround_i2p.mail.smtp
 
 
 class Domain:
@@ -36,7 +36,7 @@ class Domain:
 
         if not isinstance(
                 domain_config,
-                wayround_org.mail.server.config.DomainConfig
+                wayround_i2p.mail.server.config.DomainConfig
                 ):
             raise TypeError("invalid `domain_config' type")
 
@@ -55,12 +55,12 @@ class Domain:
 
         self.logger.info("        starting sockets")
 
-        self.sockets = wayround_org.socketserver.service.SocketServicePool2()
+        self.sockets = wayround_i2p.socketserver.service.SocketServicePool2()
 
         for i in self.cfg.sockets:
             self.logger.info("            {}".format(i.repr_as_text()))
             self.sockets.append(
-                wayround_org.mail.server.socket.SocketService(
+                wayround_i2p.mail.server.socket.SocketService(
                     i,
                     self.callable_target_for_socket_pools
                     )
@@ -114,9 +114,9 @@ class Server:
             data_dir_path
             ):
 
-        self.data_dir_path = wayround_org.utils.path.abspath(data_dir_path)
+        self.data_dir_path = wayround_i2p.utils.path.abspath(data_dir_path)
 
-        self.directory = wayround_org.mail.server.directory.RootDirectory(
+        self.directory = wayround_i2p.mail.server.directory.RootDirectory(
             self.data_dir_path
             )
 
@@ -130,7 +130,7 @@ class Server:
 
         self.cfg = self.directory.get_config()
 
-        self.general_cfg = wayround_org.mail.server.config.GeneralConfig(
+        self.general_cfg = wayround_i2p.mail.server.config.GeneralConfig(
             self.cfg['general']
             )
 
@@ -158,7 +158,7 @@ class Server:
 
         self.logger.info("starting server")
 
-        self.spooler = wayround_org.mail.server.spool.SpoolWorker(
+        self.spooler = wayround_i2p.mail.server.spool.SpoolWorker(
             self
             )
 
@@ -168,7 +168,7 @@ class Server:
             self.domains.append(
                 Domain(
                     self,
-                    wayround_org.mail.server.config.DomainConfig(i),
+                    wayround_i2p.mail.server.config.DomainConfig(i),
                     self.callable_target_for_socket_pools
                     )
                 )
@@ -301,7 +301,7 @@ class Server:
 
         if service.cfg.protocol == 'imap':
             imap_session = \
-                wayround_org.mail.server.server_imap_session.\
+                wayround_i2p.mail.server.server_imap_session.\
                 ImapSessionHandler(
                     self,
                     utc_datetime,
@@ -316,7 +316,7 @@ class Server:
             imap_session.loop_enter()
         elif service.cfg.protocol == 'smtp':
             smtp_session = \
-                wayround_org.mail.server.server_smtp_session.\
+                wayround_i2p.mail.server.server_smtp_session.\
                 SmtpSessionHandler(
                     self,
                     utc_datetime,

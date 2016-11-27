@@ -2,7 +2,7 @@
 import threading
 import os.path
 
-import wayround_org.mail.server.server
+import wayround_i2p.mail.server.server
 
 
 class SpoolWorker:
@@ -13,10 +13,10 @@ class SpoolWorker:
             interval_seconds=600  # 10 minutes
             ):
 
-        if not isinstance(server, wayround_org.mail.server.server.Server):
+        if not isinstance(server, wayround_i2p.mail.server.server.Server):
             raise TypeError(
                 "`server' must be inst of "
-                "wayround_org.mail.server.server.Server"
+                "wayround_i2p.mail.server.server.Server"
                 )
 
         if not isinstance(interval_seconds, int):
@@ -115,7 +115,7 @@ class SpoolWorker:
             for i in element.get_to():
 
                 mail_addr_obj = \
-                    wayround_org.mail.miscs.Address.new_from_str(i)
+                    wayround_i2p.mail.miscs.Address.new_from_str(i)
 
                 # TODO: correctness check. <- here or into directory.py
 

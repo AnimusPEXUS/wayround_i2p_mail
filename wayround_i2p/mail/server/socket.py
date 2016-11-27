@@ -2,10 +2,10 @@
 import socket
 import ssl
 
-import wayround_org.socketserver.server
-import wayround_org.socketserver.service
+import wayround_i2p.socketserver.server
+import wayround_i2p.socketserver.service
 
-import wayround_org.mail.server.config
+import wayround_i2p.mail.server.config
 
 
 class SocketService:
@@ -18,10 +18,10 @@ class SocketService:
 
     def __init__(self, cfg, callable_target):
 
-        if not isinstance(cfg, wayround_org.mail.server.config.SocketConfig):
+        if not isinstance(cfg, wayround_i2p.mail.server.config.SocketConfig):
             raise TypeError(
                 "`cfg' must be of type"
-                " wayround_org.mail.server.config.SocketConfig"
+                " wayround_i2p.mail.server.config.SocketConfig"
                 )
 
         self.cfg = cfg
@@ -30,7 +30,7 @@ class SocketService:
 
         self.socket = None
 
-        self.socket_server = wayround_org.socketserver.server.SocketServer(
+        self.socket_server = wayround_i2p.socketserver.server.SocketServer(
             self.socket,
             self.target,
             ssl_config=self.cfg.ssl,

@@ -4,7 +4,7 @@ import sqlalchemy.ext.declarative
 import sqlalchemy.orm
 
 
-class MailServer(wayround_org.utils.db.BasicDB):
+class MailServer(wayround_i2p.utils.db.BasicDB):
 
     def __init__(
             self,

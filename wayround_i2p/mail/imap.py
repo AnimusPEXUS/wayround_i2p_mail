@@ -1,14 +1,19 @@
 
-#import re
+import re
 
-import wayround_org.utils.types_presets
+import wayround_i2p.utils.types_presets
+import wayround_i2p.utils.datetime_rfc3501
 
-import wayround_org.mail.miscs
+import wayround_i2p.mail.miscs
 
 
-# C2S_COMMAND_LINE_RE = re.compile(
-#    r'^(?P<tag>.*?) (?P<command>.*?)( (?P<rest>.*))?$'
-#    )
+DATE_EXPR = (
+    r'\"?' 
+    + wayround_i2p.utils.datetime_rfc3501.DATE_EXPRESSION[3:-3]
+    + r'\"?'
+    )
+
+DATE_EXPR_C = re.compile(bytes(DATE_EXPR, 'utf-8'))
 
 
 def c2s_command_line_parse(data):
@@ -29,10 +34,10 @@ def c2s_command_line_parse(data):
     if not isinstance(data, bytes):
         raise TypeError("`data' type must be bytes")
 
-    if not data.endswith(wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR):
+    if not data.endswith(wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR):
         raise TypeError(
             "`data' must be termenated with `{}'".format(
-                wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+                wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR
                 )
             )
 
@@ -93,7 +98,7 @@ def s2c_response_format(tag, code, comment=None):
     if comment is not None:
         ret += bytes(' {}'.format(comment), 'utf-8')
 
-    ret += wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+    ret += wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR
 
     return ret
 
@@ -111,10 +116,10 @@ def receive_string_literal(
     success = True
 
     if is_server:
-        wayround_org.utils.socket.nb_sendall(
+        wayround_i2p.utils.socket.nb_sendall(
             sock,
             b'+ Ready for literal data' +
-            wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+            wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR
             )
 
     int_size_bs = int(size / bs)
@@ -165,11 +170,11 @@ def parse_string_literal_param(
 
     if not isinstance(
             permanent_memory,
-            wayround_org.utils.pm.PersistentMemory
+            wayround_i2p.utils.pm.PersistentMemory
             ):
         raise TypeError(
             "`permanent_memory' must be inst of "
-            "wayround_org.utils.pm.PersistentMemory"
+            "wayround_i2p.utils.pm.PersistentMemory"
             )
 
     if not isinstance(parameters_bytes, bytes):
@@ -277,11 +282,9 @@ def parse_string_param(parameters_bytes, stop_event):
 
         quote_index = -1
         if re_res is not None:
-            quote_index = re_res.pos
+            quote_index = re_res.group(0)
 
         del re_res
-
-        quote_index =
 
         if quote_index == -1:
             ret = parameters_bytes
@@ -338,10 +341,35 @@ def parse_flags_param(parameters_bytes, stop_event):
     return ret, end_index
 
 
+def parse_date_param(parameters_bytes):
+
+    ret = None
+    end_index = None
+
+    re_res = DATE_EXPR_C.search(parameters_bytes)
+
+    if re_res is not None and re_res.start(0) == 0:
+        end_index = re_res.end(0)
+
+        date_str = parameters_bytes[:end_index]
+
+        date_str = str(date_str, 'utf-8')
+
+        if date_str[0] == '"':
+            date_str = date_str[1:]
+
+        if date_str[-1] == '"':
+            date_str = date_str[:-1]
+
+        ret = wayround_i2p.utils.datetime_rfc3501.str_to_date(date_str)[0]
+
+    return ret, end_index
+
+
 def is_cmd_line_end(parameters_bytes):
     ret = False
     if (parameters_bytes
-            == wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR):
+            == wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR):
         ret = True
 
     if not ret:
@@ -489,19 +517,19 @@ def format_mailbox_status_text(
         ret += bytes(
             '* FLAGS ({})'.format(' '.join(flags)), 'utf-8'
             )
-        ret += wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+        ret += wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR
 
     if exists is not None:
         ret += bytes(
             '* {} EXISTS'.format(exists), 'utf-8'
             )
-        ret += wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+        ret += wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR
 
     if recent is not None:
         ret += bytes(
             '* {} RECENT'.format(recent), 'utf-8'
             )
-        ret += wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+        ret += wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR
 
     return ret
 

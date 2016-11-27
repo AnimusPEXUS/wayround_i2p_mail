@@ -5,13 +5,13 @@ import time
 import ssl
 import datetime
 
-import wayround_org.utils.socket
+import wayround_i2p.utils.socket
 
-import wayround_org.sasl.sasl
+import wayround_i2p.sasl.sasl
 
-import wayround_org.mail.miscs
-import wayround_org.mail.server.server
-import wayround_org.mail.smtp
+import wayround_i2p.mail.miscs
+import wayround_i2p.mail.server.server
+import wayround_i2p.mail.smtp
 
 
 class SmtpSessionHandler:
@@ -29,10 +29,10 @@ class SmtpSessionHandler:
             session_logger
             ):
 
-        if not isinstance(server, wayround_org.mail.server.server.Server):
+        if not isinstance(server, wayround_i2p.mail.server.server.Server):
             raise TypeError(
                 "`server' must be of type "
-                "wayround_org.mail.server.server.Server"
+                "wayround_i2p.mail.server.server.Server"
                 )
 
         # server connection
@@ -88,7 +88,7 @@ class SmtpSessionHandler:
 
         threading.Thread(target=self._server_stop_watcher).start()
 
-        wayround_org.utils.socket.nb_handshake(self.accepted_socket)
+        wayround_i2p.utils.socket.nb_handshake(self.accepted_socket)
 
         self.session_logger.info("Certificate info")
         self.session_logger.info("    base:")
@@ -108,18 +108,18 @@ class SmtpSessionHandler:
         self.actual_spool_element.set_to_finished(False)
         self.actual_spool_element.set_quit_ok(False)
 
-        self.lbl_reader = wayround_org.utils.socket.LblRecvReaderBuffer(
+        self.lbl_reader = wayround_i2p.utils.socket.LblRecvReaderBuffer(
             self.accepted_socket,
             # recv_size=4096,
-            line_terminator=wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+            line_terminator=wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR
             )
         self.lbl_reader.start()
 
-        wayround_org.utils.socket.nb_sendall(
+        wayround_i2p.utils.socket.nb_sendall(
             self.accepted_socket,
             # TODO: this must be configurable
             bytes('220 {}'.format(self.domain.cfg.domain), 'utf-8')
-            + wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+            + wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR
             )
 
         while True:
@@ -134,7 +134,7 @@ class SmtpSessionHandler:
             if line is None:
                 break
 
-            if line == wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR:
+            if line == wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR:
                 self.session_logger.info("client closed connection")
                 break
 
@@ -143,7 +143,7 @@ class SmtpSessionHandler:
 
             self.session_logger.info("got line from client: {}".format(line))
 
-            parsed_cmd_line = wayround_org.mail.smtp.c2s_command_line_parse(
+            parsed_cmd_line = wayround_i2p.mail.smtp.c2s_command_line_parse(
                 line
                 )
             self.session_logger.info("parsed line: {}".format(parsed_cmd_line))
@@ -163,7 +163,7 @@ class SmtpSessionHandler:
             authenticated = self.user_requested_auth is not None
             cmd_requires_auth = (
                 line_parsed_command
-                in wayround_org.mail.smtp.AUTHLESS_COMMANDS
+                in wayround_i2p.mail.smtp.AUTHLESS_COMMANDS
                 )
 
             # TODO: this is probaby must be wizer
@@ -177,9 +177,9 @@ class SmtpSessionHandler:
                     and cmd_requires_auth
                     and not authenticated):
 
-                wayround_org.utils.socket.nb_sendall(
+                wayround_i2p.utils.socket.nb_sendall(
                     self.accepted_socket,
-                    wayround_org.mail.smtp.s2c_response_format(
+                    wayround_i2p.mail.smtp.s2c_response_format(
                         530,
                         True,
                         'Authentication required'
@@ -199,9 +199,9 @@ class SmtpSessionHandler:
 
                 else:
 
-                    wayround_org.utils.socket.nb_sendall(
+                    wayround_i2p.utils.socket.nb_sendall(
                         self.accepted_socket,
-                        wayround_org.mail.smtp.s2c_response_format(
+                        wayround_i2p.mail.smtp.s2c_response_format(
                             502,
                             True,
                             'Command not implemented'
@@ -254,7 +254,7 @@ class SmtpSessionHandler:
         if len(rest) != 0:
             client_name = rest[0]
 
-        response += wayround_org.mail.smtp.s2c_response_format(
+        response += wayround_i2p.mail.smtp.s2c_response_format(
             250,
             False,
             '{} greets {}'.format(
@@ -273,19 +273,19 @@ class SmtpSessionHandler:
             ]
 
         for i in resp_lines[:-1]:
-            response += wayround_org.mail.smtp.s2c_response_format(
+            response += wayround_i2p.mail.smtp.s2c_response_format(
                 250,
                 False,
                 i
                 )
 
-        response += wayround_org.mail.smtp.s2c_response_format(
+        response += wayround_i2p.mail.smtp.s2c_response_format(
             250,
             True,
             resp_lines[-1]
             )
 
-        wayround_org.utils.socket.nb_sendall(
+        wayround_i2p.utils.socket.nb_sendall(
             self.accepted_socket,
             response
             )
@@ -300,9 +300,9 @@ class SmtpSessionHandler:
         if not error:
             if self.user_requested_auth is not None:
 
-                wayround_org.utils.socket.nb_sendall(
+                wayround_i2p.utils.socket.nb_sendall(
                     self.accepted_socket,
-                    wayround_org.mail.smtp.s2c_response_format(
+                    wayround_i2p.mail.smtp.s2c_response_format(
                         503,
                         True,
                         'Bad sequence of commands'
@@ -315,9 +315,9 @@ class SmtpSessionHandler:
 
             if rest_l < 1:
 
-                wayround_org.utils.socket.nb_sendall(
+                wayround_i2p.utils.socket.nb_sendall(
                     self.accepted_socket,
-                    wayround_org.mail.smtp.s2c_response_format(
+                    wayround_i2p.mail.smtp.s2c_response_format(
                         500,
                         True,
                         'Syntax error, command unrecognized'
@@ -332,9 +332,9 @@ class SmtpSessionHandler:
 
             if mechanism not in ['PLAIN']:
 
-                wayround_org.utils.socket.nb_sendall(
+                wayround_i2p.utils.socket.nb_sendall(
                     self.accepted_socket,
-                    wayround_org.mail.smtp.s2c_response_format(
+                    wayround_i2p.mail.smtp.s2c_response_format(
                         504,
                         True,
                         'Command parameter not implemented'
@@ -347,9 +347,9 @@ class SmtpSessionHandler:
 
             if rest_l == 1:
 
-                wayround_org.utils.socket.nb_sendall(
+                wayround_i2p.utils.socket.nb_sendall(
                     self.accepted_socket,
-                    wayround_org.mail.smtp.s2c_response_format(334, True, '')
+                    wayround_i2p.mail.smtp.s2c_response_format(334, True, '')
                     )
 
                 request = self.lbl_reader.nb_get_next_line(self._stop_event)
@@ -360,9 +360,9 @@ class SmtpSessionHandler:
 
             else:
 
-                wayround_org.utils.socket.nb_sendall(
+                wayround_i2p.utils.socket.nb_sendall(
                     self.accepted_socket,
-                    wayround_org.mail.smtp.s2c_response_format(
+                    wayround_i2p.mail.smtp.s2c_response_format(
                         500,
                         True,
                         'Syntax error, command unrecognized'
@@ -373,7 +373,7 @@ class SmtpSessionHandler:
 
         if not error:
 
-            sasl_session = wayround_org.sasl.sasl.init_mech('PLAIN', 'server')
+            sasl_session = wayround_i2p.sasl.sasl.init_mech('PLAIN', 'server')
 
             res_0, res_1 = sasl_session.step64(request)
 
@@ -416,9 +416,9 @@ passwd: '{}'
                         'passwd': sasl_session_passwd
                         }
 
-                    wayround_org.utils.socket.nb_sendall(
+                    wayround_i2p.utils.socket.nb_sendall(
                         self.accepted_socket,
-                        wayround_org.mail.smtp.s2c_response_format(
+                        wayround_i2p.mail.smtp.s2c_response_format(
                             235,
                             True,
                             'Authentication successful'
@@ -426,7 +426,7 @@ passwd: '{}'
                         )
 
                     self.actual_spool_element.set_auth_as(
-                        wayround_org.mail.miscs.Address(
+                        wayround_i2p.mail.miscs.Address(
                             '{name}@{domain}'.format(
                                 name=sasl_session_authcid,
                                 domain=self.domain.cfg.domain
@@ -436,9 +436,9 @@ passwd: '{}'
 
                 elif auth_user_res == False:
 
-                    wayround_org.utils.socket.nb_sendall(
+                    wayround_i2p.utils.socket.nb_sendall(
                         self.accepted_socket,
-                        wayround_org.mail.smtp.s2c_response_format(
+                        wayround_i2p.mail.smtp.s2c_response_format(
                             535,
                             True,
                             'Authentication credentials invalid'
@@ -468,9 +468,9 @@ passwd: '{}'
 
                 # raise Exception("programming error")
 
-                wayround_org.utils.socket.nb_sendall(
+                wayround_i2p.utils.socket.nb_sendall(
                     self.accepted_socket,
-                    wayround_org.mail.smtp.s2c_response_format(
+                    wayround_i2p.mail.smtp.s2c_response_format(
                         454,
                         True,
                         'Temporary authentication failure'
@@ -491,9 +491,9 @@ passwd: '{}'
             rest0 = rest[0]
 
             if not ':' in rest0:
-                wayround_org.utils.socket.nb_sendall(
+                wayround_i2p.utils.socket.nb_sendall(
                     self.accepted_socket,
-                    wayround_org.mail.smtp.s2c_response_format(
+                    wayround_i2p.mail.smtp.s2c_response_format(
                         500,
                         True,
                         'Syntax error, command unrecognized'
@@ -504,9 +504,9 @@ passwd: '{}'
                 sub_cmd = rest0[:semi].upper().strip()
 
                 if not sub_cmd in sub_cmd_callables_dict:
-                    wayround_org.utils.socket.nb_sendall(
+                    wayround_i2p.utils.socket.nb_sendall(
                         self.accepted_socket,
-                        wayround_org.mail.smtp.s2c_response_format(
+                        wayround_i2p.mail.smtp.s2c_response_format(
                             500,
                             True,
                             'Syntax error, command unrecognized'
@@ -525,7 +525,7 @@ passwd: '{}'
 
     def cmd_MAIL_FROM(self, cmd, rest):
         from_val = rest[0].split(':', 1)[1]
-        from_val = wayround_org.mail.miscs.Address.new_from_str(from_val)
+        from_val = wayround_i2p.mail.miscs.Address.new_from_str(from_val)
         from_val.authority.userinfo.password = None
         self.actual_spool_element.set_from(
             from_val.authority.render_str()
@@ -537,9 +537,9 @@ passwd: '{}'
                 size = int(rest1.split('=', 1)[1].strip())
                 self.actual_spool_element.set_size(size)
 
-        wayround_org.utils.socket.nb_sendall(
+        wayround_i2p.utils.socket.nb_sendall(
             self.accepted_socket,
-            wayround_org.mail.smtp.s2c_response_format(
+            wayround_i2p.mail.smtp.s2c_response_format(
                 250,
                 True,
                 'Ok'
@@ -554,7 +554,7 @@ passwd: '{}'
 
     def cmd_RCPT_TO(self, cmd, rest):
         to_val = rest[0].split(':', 1)[1]
-        to_val = wayround_org.mail.miscs.Address.new_from_str(to_val)
+        to_val = wayround_i2p.mail.miscs.Address.new_from_str(to_val)
 
         # saving this anyway, not depending on success or fault in destination
         # checks
@@ -569,18 +569,18 @@ passwd: '{}'
                     to_val.authority.host,
                     to_val.authority.userinfo.name
                     ):
-                wayround_org.utils.socket.nb_sendall(
+                wayround_i2p.utils.socket.nb_sendall(
                     self.accepted_socket,
-                    wayround_org.mail.smtp.s2c_response_format(
+                    wayround_i2p.mail.smtp.s2c_response_format(
                         250,
                         True,
                         'Ok'
                         )
                     )
             else:
-                wayround_org.utils.socket.nb_sendall(
+                wayround_i2p.utils.socket.nb_sendall(
                     self.accepted_socket,
-                    wayround_org.mail.smtp.s2c_response_format(
+                    wayround_i2p.mail.smtp.s2c_response_format(
                         550,
                         True,
                         'mailbox not found'
@@ -590,9 +590,9 @@ passwd: '{}'
         elif self.service.cfg.smtp_mode == 'submission':
             # user assumed to be authenticated
             # so he's allowed anything
-            wayround_org.utils.socket.nb_sendall(
+            wayround_i2p.utils.socket.nb_sendall(
                 self.accepted_socket,
-                wayround_org.mail.smtp.s2c_response_format(
+                wayround_i2p.mail.smtp.s2c_response_format(
                     250,
                     True,
                     'Ok'
@@ -613,9 +613,9 @@ passwd: '{}'
             datetime.datetime.utcnow()
             )
 
-        wayround_org.utils.socket.nb_sendall(
+        wayround_i2p.utils.socket.nb_sendall(
             self.accepted_socket,
-            wayround_org.mail.smtp.s2c_response_format(
+            wayround_i2p.mail.smtp.s2c_response_format(
                 354,
                 True,
                 ''
@@ -630,9 +630,9 @@ passwd: '{}'
 
             if line.strip() == b'.':
 
-                wayround_org.utils.socket.nb_sendall(
+                wayround_i2p.utils.socket.nb_sendall(
                     self.accepted_socket,
-                    wayround_org.mail.smtp.s2c_response_format(
+                    wayround_i2p.mail.smtp.s2c_response_format(
                         250,
                         True,
                         'Ok'
@@ -647,9 +647,9 @@ passwd: '{}'
         return
 
     def cmd_QUIT(self, cmd, rest):
-        wayround_org.utils.socket.nb_sendall(
+        wayround_i2p.utils.socket.nb_sendall(
             self.accepted_socket,
-            wayround_org.mail.smtp.s2c_response_format(
+            wayround_i2p.mail.smtp.s2c_response_format(
                 221,
                 True,
                 'Ok'

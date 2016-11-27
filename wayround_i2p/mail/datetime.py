@@ -2,7 +2,7 @@
 import re
 import datetime
 
-import wayround_org.utils.datetime_iso8601
+import wayround_i2p.utils.datetime_iso8601
 
 
 DAY = [
@@ -67,7 +67,7 @@ def str_to_datetime(text):
         m_name = d['month_name'][:1].upper() + d['month_name'][1:].lower()
         d['month'] = MONTH.index(m_name) + 1
 
-        tz = wayround_org.utils.datetime_iso8601.gen_tz(
+        tz = wayround_i2p.utils.datetime_iso8601.gen_tz(
             d['tzhour'],
             d['tzminute'],
             d['sign'] != '-'
@@ -92,7 +92,7 @@ def datetime_to_str(dt, day_name=True, second=True):
     if dt.tzinfo is None:
         raise ValueError("`dt' must contain tzinfo")
 
-    tz = wayround_org.utils.datetime_iso8601.format_tz(
+    tz = wayround_i2p.utils.datetime_iso8601.format_tz(
         dt.tzinfo,
         sep=False,
         minu=True,

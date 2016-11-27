@@ -2,7 +2,7 @@
 import yaml
 import logging
 
-import wayround_org.socketserver.server
+import wayround_i2p.socketserver.server
 
 
 class GeneralConfig:
@@ -18,7 +18,7 @@ class GeneralConfig:
             if i in data_dict:
                 setattr(self, i, data_dict[i])
 
-        self.gid, self.uid = wayround_org.utils.osutils.convert_gid_uid(
+        self.gid, self.uid = wayround_i2p.utils.osutils.convert_gid_uid(
             self.gid,
             self.uid
             )
@@ -89,7 +89,7 @@ class SocketConfig:
                 setattr(self, i, data_dict[i])
 
         if 'ssl' in data_dict:
-            self.ssl = wayround_org.socketserver.server.SSLConfig(
+            self.ssl = wayround_i2p.socketserver.server.SSLConfig(
                 data_dict['ssl']
                 )
 

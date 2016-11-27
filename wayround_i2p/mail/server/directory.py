@@ -11,14 +11,14 @@ import weakref
 
 import yaml
 
-import wayround_org.utils.flagged_file
-import wayround_org.utils.log
-import wayround_org.utils.path
-import wayround_org.utils.threading
-import wayround_org.utils.time
-import wayround_org.utils.pm
+import wayround_i2p.utils.flagged_file
+import wayround_i2p.utils.log
+import wayround_i2p.utils.path
+import wayround_i2p.utils.threading
+import wayround_i2p.utils.time
+import wayround_i2p.utils.pm
 
-import wayround_org.mail.server.directory_flag_methods
+import wayround_i2p.mail.server.directory_flag_methods
 
 
 DOMAINS_DIR_NAME = 'domains'
@@ -37,7 +37,7 @@ def verify_mail_element_name(element_name):
         raise TypeError("mail element name must be str")
 
     if not re.match(
-            wayround_org.utils.time.TIMESTAMP_RE_PATTERN,
+            wayround_i2p.utils.time.TIMESTAMP_RE_PATTERN,
             element_name
             ):
         raise ValueError(
@@ -57,25 +57,25 @@ def verify_user_name(name):
 class RootDirectory:
 
     def __init__(self, path):
-        self.path = wayround_org.utils.path.abspath(path)
-        self.domains_path = wayround_org.utils.path.join(
+        self.path = wayround_i2p.utils.path.abspath(path)
+        self.domains_path = wayround_i2p.utils.path.join(
             self.path,
             DOMAINS_DIR_NAME
             )
-        self.logs_path = wayround_org.utils.path.join(
+        self.logs_path = wayround_i2p.utils.path.join(
             self.path,
             LOGS_DIR_NAME
             )
 
-        self.object_locker = wayround_org.utils.threading.ObjectLocker()
+        self.object_locker = wayround_i2p.utils.threading.ObjectLocker()
         self._spool_directory = SpoolDirectory(self)
 
         self._get_domain_dict = weakref.WeakValueDictionary()
         self._get_domain_lock = threading.Lock()
 
         self._permanent_memory = \
-            wayround_org.utils.pm.PersistentMemory.new_fs_memory(
-                wayround_org.utils.path.join(
+            wayround_i2p.utils.pm.PersistentMemory.new_fs_memory(
+                wayround_i2p.utils.path.join(
                     self.path,
                     'permanent_memory'
                     )
@@ -87,7 +87,7 @@ class RootDirectory:
         return self._permanent_memory
 
     def create_normal_logger(self, group=None, user=None):
-        return wayround_org.utils.log.Log(
+        return wayround_i2p.utils.log.Log(
             self.logs_path,
             'normal',
             group=group,
@@ -95,7 +95,7 @@ class RootDirectory:
             )
 
     def create_session_logger(self, name, timestamp, group=None, user=None):
-        return wayround_org.utils.log.Log(
+        return wayround_i2p.utils.log.Log(
             self.logs_path,
             'session-{}'.format(name),
             # timestamp=timestamp,
@@ -104,13 +104,13 @@ class RootDirectory:
             )
 
     def create_spool_logger(self, name):
-        return wayround_org.utils.log.Log(
+        return wayround_i2p.utils.log.Log(
             self.logs_path,
             'spool-{}'.format(name)
             )
 
     def create_error_logger(self, group=None, user=None):
-        return wayround_org.utils.log.Log(
+        return wayround_i2p.utils.log.Log(
             self.logs_path,
             'error',
             group=group,
@@ -124,7 +124,7 @@ class RootDirectory:
     def get_config(self):
         ret = {}
 
-        file_name = wayround_org.utils.path.join(self.path, 'config.yaml')
+        file_name = wayround_i2p.utils.path.join(self.path, 'config.yaml')
 
         if os.path.isfile(file_name):
             with self.object_locker.get_lock(file_name):
@@ -140,7 +140,7 @@ class RootDirectory:
 
         ret = False
 
-        file_name = wayround_org.utils.path.join(self.path, 'config.yaml')
+        file_name = wayround_i2p.utils.path.join(self.path, 'config.yaml')
 
         with self.object_locker.get_lock(file_name):
             with open(file_name, 'w') as f:
@@ -157,7 +157,7 @@ class RootDirectory:
         if os.path.isdir(self.domains_path):
             for i in os.listdir(self.domains_path):
                 i_lower = i.lower()  # only lower case domain names are valid
-                j = wayround_org.utils.path.join(self.domains_path, i_lower)
+                j = wayround_i2p.utils.path.join(self.domains_path, i_lower)
                 if os.path.isdir(j):
                     ret.append(i_lower)
 
@@ -238,7 +238,7 @@ class Domain:
         self.domain = domain
 
         self.path = self.gen_path()
-        self.users_path = wayround_org.utils.path.join(
+        self.users_path = wayround_i2p.utils.path.join(
             self.path,
             USERS_DIR_NAME
             )
@@ -248,7 +248,7 @@ class Domain:
         return
 
     def gen_path(self):
-        return wayround_org.utils.path.join(
+        return wayround_i2p.utils.path.join(
             self.root_dir_obj.path,
             DOMAINS_DIR_NAME,
             str(self.domain.encode('idna'), 'utf-8')
@@ -305,7 +305,7 @@ class Domain:
 
         for i in lst:
             i_lower = i.lower()  # only lower case domain names are valid
-            j = wayround_org.utils.path.join(self.users_path, i_lower)
+            j = wayround_i2p.utils.path.join(self.users_path, i_lower)
             if os.path.isdir(j):
                 ret.append(i_lower)
 
@@ -386,7 +386,7 @@ class User:
         return
 
     def gen_path(self):
-        return wayround_org.utils.path.join(
+        return wayround_i2p.utils.path.join(
             self.domain_obj.path,
             USERS_DIR_NAME,
             str(self.name.encode('idna'), 'utf-8')
@@ -446,7 +446,7 @@ class MailDirRoot:
         return
 
     def gen_path(self):
-        return wayround_org.utils.path.join(
+        return wayround_i2p.utils.path.join(
             self.user_obj.path,
             MAIL_DIR_NAME
             )
@@ -476,12 +476,12 @@ class MailDir:
 
         self.path = self.gen_path()
 
-        j = wayround_org.utils.path.join(
+        j = wayround_i2p.utils.path.join(
             self.maildir_root_obj.path,
             self.subpath
             )
 
-        if not wayround_org.utils.path.is_subpath_real(
+        if not wayround_i2p.utils.path.is_subpath_real(
                 j,
                 self.maildir_root_obj.path
                 ):
@@ -501,7 +501,7 @@ class MailDir:
         if self.subpath == '':
             ret = self.maildir_root_obj.path
         else:
-            ret = wayround_org.utils.path.join(
+            ret = wayround_i2p.utils.path.join(
                 self.maildir_root_obj.path,
                 self.subpath
                 )
@@ -521,14 +521,14 @@ class MailDir:
     def get_dir_list(self):
         ret = []
         for i in self.listdir():
-            if os.path.isdir(wayround_org.utils.path.join(self.path, i)):
+            if os.path.isdir(wayround_i2p.utils.path.join(self.path, i)):
                 ret.append(i)
         return ret
 
     def get_file_list(self):
         ret = []
         for i in self.listdir():
-            if os.path.isfile(wayround_org.utils.path.join(self.path, i)):
+            if os.path.isfile(wayround_i2p.utils.path.join(self.path, i)):
                 ret.append(i)
         return ret
 
@@ -538,7 +538,7 @@ class MailDir:
         ret = []
 
         for i in lst:
-            ji = wayround_org.utils.path.join(self.path, i)
+            ji = wayround_i2p.utils.path.join(self.path, i)
             if os.path.isfile(ji):
                 point_pos = i.rfind('.')
                 if point_pos != -1:
@@ -549,14 +549,14 @@ class MailDir:
         return ret
 
     def get_directory(self, subpath):
-        j = wayround_org.utils.path.join(self.subpath, subpath)
+        j = wayround_i2p.utils.path.join(self.subpath, subpath)
         self.maildir_root_obj.get_maildir(j)
         return
 
     def new_message(self):
         ret = Message(
             self,
-            wayround_org.utils.time.currenttime_stamp_utc()
+            wayround_i2p.utils.time.currenttime_stamp_utc()
             )
         return ret
 
@@ -571,7 +571,7 @@ class MailDir:
         # TODO: security checks required
 
         glob_res = glob.glob(
-            wayround_org.utils.path.join(self.path, pathname),
+            wayround_i2p.utils.path.join(self.path, pathname),
             recursive=recursive
             )
 
@@ -693,13 +693,13 @@ class MessageIndexBuilder:
             log.info("    prepending Received field")
             tmeo_file.write(b"Received: ")
             tmeo_file.write(bytes(received, 'utf-8'))
-            tmeo_file.write(wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR)
+            tmeo_file.write(wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR)
 
         if return_path is not None:
             log.info("    prepending Return-path field")
             tmeo_file.write(b"Return-path: ")
             tmeo_file.write(bytes(return_path, 'utf-8'))
-            tmeo_file.write(wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR)
+            tmeo_file.write(wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR)
 
         log.info("    transferring rest of the data")
 
@@ -802,7 +802,7 @@ class MessageIndexBuilder:
                     break
 
                 bf_res = buff.find(
-                    wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR
+                    wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR
                     )
 
                 if bf_res == -1:
@@ -812,12 +812,12 @@ class MessageIndexBuilder:
                     offset = (
                         offset +
                         bf_res +
-                        wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR_LEN
+                        wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR_LEN
                         )
                     data.append(offset)
                     buff = buff[
                         bf_res +
-                        wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR_LEN:
+                        wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR_LEN:
                         ]
 
         if (stop_event is not None and stop_event.is_set()) or input_invalid:
@@ -868,7 +868,7 @@ class MessageIndexBuilder:
 
             line = self.get_data_line(i)
 
-            if line == wayround_org.mail.miscs.STANDARD_LINE_TERMINATOR:
+            if line == wayround_i2p.mail.miscs.STANDARD_LINE_TERMINATOR:
 
                 self._calculate_section_lines_sub_01(
                     sections,
@@ -968,7 +968,7 @@ class MessageIndexBuilder:
 
 
 class MessageFlags(
-        wayround_org.mail.server.directory_flag_methods.MessageFlagMethods
+        wayround_i2p.mail.server.directory_flag_methods.MessageFlagMethods
         ):
 
     def __init__(self, path, name):
@@ -978,7 +978,7 @@ class MessageFlags(
 
         verify_mail_element_name(name)
 
-        self.flagged = wayround_org.utils.flagged_file.FlaggedFile(
+        self.flagged = wayround_i2p.utils.flagged_file.FlaggedFile(
             path,
             name,
             [
@@ -1052,7 +1052,7 @@ class TransitionMessage(MessageFlags, MessageIndexBuilder):
             raise ValueError("`name' must not end with '.data'")
 
         super().__init__(
-            wayround_org.utils.path.join(
+            wayround_i2p.utils.path.join(
                 spool_dir_obj.path,
                 'spool_conversion_tmp'
                 ),
@@ -1184,7 +1184,7 @@ class SpoolDirectory:
         return
 
     def gen_path(self):
-        return wayround_org.utils.path.join(
+        return wayround_i2p.utils.path.join(
             self.root_dir_obj.path,
             SPOOL_DIR_NAME
             )
@@ -1201,7 +1201,7 @@ class SpoolDirectory:
     def new_element(self):
         ret = SpoolElement(
             self,
-            wayround_org.utils.time.currenttime_stamp_utc()
+            wayround_i2p.utils.time.currenttime_stamp_utc()
             )
         return ret
 
@@ -1211,7 +1211,7 @@ class SpoolDirectory:
     def get_transition_message(self, name):
         return TransitionMessage(
             self,
-            # wayround_org.utils.path.join(
+            # wayround_i2p.utils.path.join(
             #    self.path,
             #    'spool_conversion_tmp'
             #    ),
@@ -1220,7 +1220,7 @@ class SpoolDirectory:
 
 
 class SpoolElement(
-        wayround_org.mail.server.directory_flag_methods.MessageFlagMethods,
+        wayround_i2p.mail.server.directory_flag_methods.MessageFlagMethods,
         LockableMailElement
         ):
 
@@ -1240,7 +1240,7 @@ class SpoolElement(
         self.object_locker = self._spool_dir_obj.object_locker
         self._element_name = element_name
 
-        self.flagged = wayround_org.utils.flagged_file.FlaggedFile(
+        self.flagged = wayround_i2p.utils.flagged_file.FlaggedFile(
             self._spool_dir_obj.path,
             self._element_name,
             [
